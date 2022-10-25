@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.8.0", features = ["dynamic"] }
+iyes_loopless = "0.7.1"
 
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:

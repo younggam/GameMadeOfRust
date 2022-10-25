@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
 enum AppState {
     MainMenu,
     InGame,
@@ -11,9 +12,11 @@ struct AppStateComponent(AppState);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_system_to_stage(CoreStage::First, || println!("first"))
+        .add_startup_system_to_stage(StartupStage::PreStartup, || println!("pre start up"))
         //Main Menu
-        .insert_resource(AppState::MainMenu)
-        .add_system_set(SystemSet::new().with_system(setup))
+        .add_state(AppState::MainMenu)
+        .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup))
         .add_system_set(
             SystemSet::on_update(AppState::MainMenu)
                 .with_system(button_system)
@@ -28,22 +31,18 @@ fn main() {
                 .with_system(clear_state_system),
         )
         //In Game
-        .add_state_to_stage(CoreStage::PostUpdate, AppState::InGame)
-        .add_system_set_to_stage(
-            CoreStage::PostUpdate,
+        .add_system_set(
             SystemSet::on_enter(AppState::InGame)
                 .with_system(|time: Res<Time>| println!("hi game {:?}", time.time_since_startup())),
         )
-        .add_system_set_to_stage(
-            CoreStage::PostUpdate,
+        .add_system_set(
             SystemSet::on_update(AppState::InGame)
                 .with_system(|time: Res<Time>| {
                     println!("update game {:?}", time.time_since_startup())
                 })
                 .with_system(enter_menu),
         )
-        .add_system_set_to_stage(
-            CoreStage::PostUpdate,
+        .add_system_set(
             SystemSet::on_exit(AppState::InGame)
                 .with_system(|time: Res<Time>| println!("bye game {:?}", time.time_since_startup()))
                 .with_system(clear_state_system),
@@ -82,21 +81,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(Camera2dBundle::default())
         .insert(AppStateComponent(AppState::MainMenu));
-    commands
-        .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                // center button
-                margin: UiRect::all(Val::Auto),
-                // horizontally center child text
-                justify_content: JustifyContent::Center,
-                // vertically center child text
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            color: Color::WHITE.into(),
+    commands.spawn_bundle(ButtonBundle {
+        style: Style {
+            size: Size::new(Val::Px(150.0), Val::Px(65.0)),
+            // center button
+            margin: UiRect::all(Val::Auto),
+            // horizontally center child text
+            justify_content: JustifyContent::Center,
+            // vertically center child text
+            align_items: AlignItems::Center,
             ..default()
-        })
+        },
+        color: Color::WHITE.into(),
+        ..default()
+    })
         .insert(AppStateComponent(AppState::MainMenu))
         .with_children(|parent| {
             parent.spawn_bundle(
@@ -118,21 +116,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     }),
             );
         });
-    commands
-        .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                // center button
-                margin: UiRect::all(Val::Auto),
-                // horizontally center child text
-                justify_content: JustifyContent::Center,
-                // vertically center child text
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            color: Color::WHITE.into(),
+    commands.spawn_bundle(ButtonBundle {
+        style: Style {
+            size: Size::new(Val::Px(150.0), Val::Px(65.0)),
+            // center button
+            margin: UiRect::all(Val::Auto),
+            // horizontally center child text
+            justify_content: JustifyContent::Center,
+            // vertically center child text
+            align_items: AlignItems::Center,
             ..default()
-        })
+        },
+        color: Color::WHITE.into(),
+        ..default()
+    })
         .insert(AppStateComponent(AppState::MainMenu))
         .with_children(|parent| {
             parent.spawn_bundle(
