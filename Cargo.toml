@@ -6,9 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.8.0", features = ["dynamic"] }
-iyes_loopless = "0.7.1"
 
+[dependencies.bevy]
+version = "0.8.0"
+
+[dev-dependencies.bevy]
+version = "0.8.0"
+features = ["dynamic", "trace"]
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]
