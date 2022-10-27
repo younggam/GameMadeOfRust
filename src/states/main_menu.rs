@@ -43,10 +43,7 @@ fn interact_buttons(
 ) {
     for (interaction, mut color, func) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
-                let a = &mut *state;
-                func.0(a)
-            }
+            Interaction::Clicked => func.0(&mut *state),
             Interaction::Hovered => {
                 *color = BUTTON_COLOR_HOVER.into();
             }
