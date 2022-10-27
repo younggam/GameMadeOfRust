@@ -1,7 +1,6 @@
 pub(crate) mod in_game;
 pub(crate) mod main_menu;
 
-use bevy::ecs::schedule::StateData;
 use bevy::ecs::system::Resource;
 use bevy::prelude::*;
 
@@ -80,29 +79,52 @@ impl Plugin for StatesPlugin {
     }
 }
 
-fn manage_state(
-    state: Res<AppState>,
-    first: ResMut<FirstStageState>,
-    pre_update: ResMut<PreUpdateStageState>,
-    update: ResMut<UpdateStageState>,
-    post_update: ResMut<PostUpdateStageState>,
-    last: ResMut<LastStageState>,
-) {
-    if state.is_changed() {
-        match state.into_inner() {
+fn manage_state(world: &mut World) {
+    if world.is_resource_changed::<AppState>() && !world.is_resource_added::<AppState>() {
+        match world.resource::<AppState>() {
             AppState::MainMenu => {
-                *first.into_inner() = FirstStageState::MainMenu;
-                *pre_update.into_inner() = PreUpdateStageState::MainMenu;
-                *update.into_inner() = UpdateStageState::MainMenu;
-                *post_update.into_inner() = PostUpdateStageState::MainMenu;
-                *last.into_inner() = LastStageState::MainMenu;
+                world
+                    .resource_mut::<State<FirstStageState>>()
+                    .overwrite_set(FirstStageState::MainMenu)
+                    .unwrap();
+                world
+                    .resource_mut::<State<PreUpdateStageState>>()
+                    .overwrite_set(PreUpdateStageState::MainMenu)
+                    .unwrap();
+                world
+                    .resource_mut::<State<UpdateStageState>>()
+                    .overwrite_set(UpdateStageState::MainMenu)
+                    .unwrap();
+                world
+                    .resource_mut::<State<PostUpdateStageState>>()
+                    .overwrite_set(PostUpdateStageState::MainMenu)
+                    .unwrap();
+                world
+                    .resource_mut::<State<LastStageState>>()
+                    .overwrite_set(LastStageState::MainMenu)
+                    .unwrap();
             }
             AppState::InGame => {
-                *first.into_inner() = FirstStageState::InGame;
-                *pre_update.into_inner() = PreUpdateStageState::InGame;
-                *update.into_inner() = UpdateStageState::InGame;
-                *post_update.into_inner() = PostUpdateStageState::InGame;
-                *last.into_inner() = LastStageState::InGame;
+                world
+                    .resource_mut::<State<FirstStageState>>()
+                    .overwrite_set(FirstStageState::InGame)
+                    .unwrap();
+                world
+                    .resource_mut::<State<PreUpdateStageState>>()
+                    .overwrite_set(PreUpdateStageState::InGame)
+                    .unwrap();
+                world
+                    .resource_mut::<State<UpdateStageState>>()
+                    .overwrite_set(UpdateStageState::InGame)
+                    .unwrap();
+                world
+                    .resource_mut::<State<PostUpdateStageState>>()
+                    .overwrite_set(PostUpdateStageState::InGame)
+                    .unwrap();
+                world
+                    .resource_mut::<State<LastStageState>>()
+                    .overwrite_set(LastStageState::InGame)
+                    .unwrap();
             }
         };
     }
@@ -111,10 +133,11 @@ fn manage_state(
 fn clear_state(
     mut commands: Commands,
     mut despawn_entities_query: Query<(Entity, &StateComponent<AppState>)>,
-    app_state: Res<State<AppState>>,
+    app_state: Res<AppState>,
 ) {
+    let app_state = app_state.into_inner();
     for (entity, entity_app_state) in despawn_entities_query.iter_mut() {
-        if *app_state.current() != entity_app_state.0 {
+        if *app_state != entity_app_state.0 {
             commands.entity(entity).despawn_recursive();
         }
     }
