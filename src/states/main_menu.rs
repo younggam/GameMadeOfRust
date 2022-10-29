@@ -25,9 +25,7 @@ impl Plugin for MainMenuPlugin {
         )
         .add_system_set_to_stage(
             CoreStage::Update,
-            SystemSet::on_update(UpdateStageState::MainMenu)
-                .with_system(play_button)
-                .with_system(exit_button),
+            SystemSet::on_update(UpdateStageState::MainMenu).with_system(play_button),
         );
     }
 }
@@ -37,15 +35,16 @@ fn play_button(
         (
             &Interaction,
             &mut UiColor,
-            &Action<for<'a> fn(&'a mut AppState)>,
+            &Action<for<'a> fn(&'a mut AppState, &'a Time)>,
         ),
         (Changed<Interaction>, With<Button>),
     >,
     mut state: ResMut<AppState>,
+    time: Res<Time>,
 ) {
     for (interaction, mut color, func) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => func.run(&mut *state),
+            Interaction::Clicked => func.run(&mut *state, &*time),
             Interaction::Hovered => {
                 *color = BUTTON_COLOR_HOVER.into();
             }
@@ -125,8 +124,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(create_button())
         .insert(StateComponent(AppState::MainMenu))
-        .insert(Action::<for<'a> fn(&'a mut AppState)>::new(
-            |a: &mut AppState| *a = AppState::InGame,
+        .insert(Action::<for<'a> fn(&'a mut AppState, &'a Time)>::new(
+            |a: &mut AppState, time: &Time| {
+                println!("click {:?}", time.time_since_startup());
+                *a = AppState::InGame
+            },
         ))
         .with_children(|parent| {
             parent.spawn_bundle(create_text(PLAY_TEXT, &asset_server));
