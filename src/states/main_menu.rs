@@ -1,4 +1,5 @@
 use crate::states::*;
+use bevy::app::AppExit;
 
 use bevy::prelude::*;
 use game_made_of_rust::func::*;
@@ -23,12 +24,14 @@ impl Plugin for MainMenuPlugin {
         )
         .add_system_set_to_stage(
             CoreStage::Update,
-            SystemSet::on_update(UpdateStageState::MainMenu).with_system(interact_buttons),
+            SystemSet::on_update(UpdateStageState::MainMenu)
+                .with_system(play_button)
+                .with_system(exit_button),
         );
     }
 }
 
-fn interact_buttons(
+fn play_button(
     mut interaction_query: Query<
         (
             &Interaction,
@@ -42,6 +45,30 @@ fn interact_buttons(
     for (interaction, mut color, func) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => func.run(&mut *state),
+            Interaction::Hovered => {
+                *color = BUTTON_COLOR_HOVER.into();
+            }
+            Interaction::None => {
+                *color = BUTTON_COLOR_NONE.into();
+            }
+        }
+    }
+}
+
+fn exit_button(
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            &mut UiColor,
+            &Action<for<'a> fn(&'a mut EventWriter<AppExit>)>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut event: EventWriter<AppExit>,
+) {
+    for (interaction, mut color, func) in interaction_query.iter_mut() {
+        match *interaction {
+            Interaction::Clicked => func.run(&mut event),
             Interaction::Hovered => {
                 *color = BUTTON_COLOR_HOVER.into();
             }
@@ -88,10 +115,6 @@ fn text(text: impl Into<String>, asset_server: &AssetServer) -> TextBundle {
     })
 }
 
-fn but(a: &mut AppState) {
-    *a = AppState::InGame;
-}
-
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // ui camera
     commands
@@ -101,7 +124,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(button())
         .insert(StateComponent(AppState::MainMenu))
-        .insert(Action::<for<'a> fn(&'a mut AppState)>::new(but))
+        .insert(Action::<for<'a> fn(&'a mut AppState)>::new(
+            |a: &mut AppState| *a = AppState::InGame,
+        ))
         .with_children(|parent| {
             parent.spawn_bundle(text(PLAY_TEXT, &asset_server));
         });
@@ -109,6 +134,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(button())
         .insert(StateComponent(AppState::MainMenu))
+        .insert(Action::<for<'a> fn(&'a mut EventWriter<AppExit>)>::new(
+            |a: &mut EventWriter<AppExit>| a.send(AppExit),
+        ))
         .with_children(|parent| {
             parent.spawn_bundle(text(EXIT_TEXT, &asset_server));
         });
