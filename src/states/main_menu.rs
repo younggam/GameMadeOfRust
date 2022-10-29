@@ -1,8 +1,9 @@
 use crate::states::*;
-use bevy::app::AppExit;
 
-use bevy::prelude::*;
 use game_made_of_rust::func::*;
+
+use bevy::app::AppExit;
+use bevy::prelude::*;
 
 const FONT_DIR: &str = "fonts/Schluber.otf";
 
@@ -79,7 +80,7 @@ fn exit_button(
     }
 }
 
-fn button() -> ButtonBundle {
+fn create_button() -> ButtonBundle {
     ButtonBundle {
         style: Style {
             size: Size::new(Val::Px(150.0), Val::Px(65.0)),
@@ -96,7 +97,7 @@ fn button() -> ButtonBundle {
     }
 }
 
-fn text(text: impl Into<String>, asset_server: &AssetServer) -> TextBundle {
+fn create_text(text: impl Into<String>, asset_server: &AssetServer) -> TextBundle {
     TextBundle::from_section(
         text,
         TextStyle {
@@ -122,22 +123,22 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(StateComponent(AppState::MainMenu));
 
     commands
-        .spawn_bundle(button())
+        .spawn_bundle(create_button())
         .insert(StateComponent(AppState::MainMenu))
         .insert(Action::<for<'a> fn(&'a mut AppState)>::new(
             |a: &mut AppState| *a = AppState::InGame,
         ))
         .with_children(|parent| {
-            parent.spawn_bundle(text(PLAY_TEXT, &asset_server));
+            parent.spawn_bundle(create_text(PLAY_TEXT, &asset_server));
         });
 
     commands
-        .spawn_bundle(button())
+        .spawn_bundle(create_button())
         .insert(StateComponent(AppState::MainMenu))
         .insert(Action::<for<'a> fn(&'a mut EventWriter<AppExit>)>::new(
             |a: &mut EventWriter<AppExit>| a.send(AppExit),
         ))
         .with_children(|parent| {
-            parent.spawn_bundle(text(EXIT_TEXT, &asset_server));
+            parent.spawn_bundle(create_text(EXIT_TEXT, &asset_server));
         });
 }
