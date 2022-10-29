@@ -1,6 +1,7 @@
 use crate::states::*;
 
 use bevy::prelude::*;
+use game_made_of_rust::func::*;
 
 const FONT_DIR: &str = "fonts/Schluber.otf";
 
@@ -27,9 +28,6 @@ impl Plugin for MainMenuPlugin {
     }
 }
 
-#[derive(Component)]
-pub(crate) struct Action<F>(F);
-
 fn interact_buttons(
     mut interaction_query: Query<
         (
@@ -43,7 +41,7 @@ fn interact_buttons(
 ) {
     for (interaction, mut color, func) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => func.0(&mut *state),
+            Interaction::Clicked => func.run(&mut *state),
             Interaction::Hovered => {
                 *color = BUTTON_COLOR_HOVER.into();
             }
@@ -92,7 +90,6 @@ fn text(text: impl Into<String>, asset_server: &AssetServer) -> TextBundle {
 
 fn but(a: &mut AppState) {
     *a = AppState::InGame;
-    *a = AppState::InGame;
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -104,7 +101,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(button())
         .insert(StateComponent(AppState::MainMenu))
-        .insert(Action::<for<'a> fn(&'a mut AppState)>(but))
+        .insert(Action::<for<'a> fn(&'a mut AppState)>::new(but))
         .with_children(|parent| {
             parent.spawn_bundle(text(PLAY_TEXT, &asset_server));
         });
