@@ -1,3 +1,5 @@
+extern crate core;
+
 pub(crate) mod states;
 
 use crate::states::{in_game::*, main_menu::*, *};
