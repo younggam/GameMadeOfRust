@@ -70,3 +70,23 @@ pub fn impl_with_tuples(input: TokenStream) -> TokenStream {
 
     new_stream.into_iter().collect()
 }
+
+#[proc_macro]
+pub fn concat_ident(input: TokenStream) -> TokenStream {
+    let mut token_trees = input.into_iter();
+
+    fn get_ident(token_tree: Option<TokenTree>) -> String {
+        match token_tree {
+            Some(token_tree) => match token_tree {
+                TokenTree::Ident(i) => i.to_string(),
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
+    }
+    let mut ident = get_ident(token_trees.next());
+    ident.push_str(&get_ident(token_trees.next()));
+
+    let ret = [TokenTree::Ident(Ident::new(&ident, Span::call_site()))];
+    ret.into_iter().collect()
+}

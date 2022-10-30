@@ -16,5 +16,5 @@ impl Plugin for InGamePlugin {
 fn setup(mut commands: Commands) {
     commands
         .spawn_bundle(Camera3dBundle::default())
-        .insert(StateComponent(AppState::InGame));
+        .insert(GlobalState(AppState::InGame));
 }
