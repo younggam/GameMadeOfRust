@@ -1,5 +1,6 @@
-use bevy::prelude::Component;
 use macros::impl_with_tuples;
+
+use bevy::prelude::Component;
 
 #[derive(Component)]
 pub struct Action<F>(F);

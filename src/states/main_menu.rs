@@ -1,28 +1,8 @@
-use crate::states::*;
+use crate::{func::*, states::*, ui::*};
 
-use game_made_of_rust::func::*;
+use bevy::{app::AppExit, prelude::*};
 
-use bevy::app::AppExit;
-use bevy::prelude::*;
-
-const FONT_DIR: &str = "fonts/Schluber.otf";
-
-const PLAY_TEXT: &str = "Play";
-const EXIT_TEXT: &str = "Exit";
-const ARE_YOU_SURE_TEXT: &str = "Are you sure?";
-const YES_TEXT: &str = "Yes";
-const NO_TEXT: &str = "No";
-
-const TEXT_COLOR_BRIGHT: Color = Color::YELLOW;
-const TEXT_COLOR_DARK: Color = Color::BLACK;
-
-const BUTTON_COLOR_NONE: Color = Color::BLACK;
-const BUTTON_COLOR_HOVER: Color = Color::GRAY;
-
-#[derive(Component)]
-pub(crate) struct Hierarchy<const N: i32>;
-
-pub(crate) struct MainMenuPlugin;
+pub struct MainMenuPlugin;
 
 impl Plugin for MainMenuPlugin {
     fn build(&self, app: &mut App) {
@@ -33,30 +13,33 @@ impl Plugin for MainMenuPlugin {
         )
         .add_system_set_to_stage(
             CoreStage::Update,
-            SystemSet::on_update(UpdateStageState::MainMenu(None)).with_system(main_button),
+            SystemSet::on_update(UpdateStageState::MainMenu(None))
+                .with_system(button)
+                .with_system(close_requested::<1, MainMenuState>),
         )
         //MainMenuState::Exit
         .add_system_set_to_stage(
             CoreStage::PreUpdate,
-            SystemSet::on_enter(PreUpdateStageState::MainMenu(Some(MainMenuState::Exit)))
+            SystemSet::on_enter(PreUpdateStageState::MainMenu(Some(MainMenuState::AppExit)))
                 .with_system(setup_exit),
         )
         .add_system_set_to_stage(
             CoreStage::Update,
-            SystemSet::on_update(UpdateStageState::MainMenu(Some(MainMenuState::Exit)))
-                .with_system(main_exit_no_button)
-                .with_system(main_exit_yes_button),
+            SystemSet::on_update(UpdateStageState::MainMenu(Some(MainMenuState::AppExit)))
+                .with_system(exit_no_button::<1>)
+                .with_system(exit_yes_button::<1>)
+                .with_system(exit_close_requested),
         );
     }
 }
 
-fn main_button(
+fn button(
     mut interaction_query: Query<
         (
             &Interaction,
             &mut UiColor,
             &Action<for<'a> fn(&'a mut GlobalState)>,
-            &Hierarchy<0>,
+            &HierarchyMark<0>,
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -75,111 +58,19 @@ fn main_button(
     }
 }
 
-fn main_exit_no_button(
-    mut interaction_query: Query<
-        (
-            &Interaction,
-            &mut UiColor,
-            &Action<for<'a> fn(&'a mut GlobalState)>,
-            &Hierarchy<1>,
-        ),
-        (Changed<Interaction>, With<Button>),
-    >,
-    mut state: ResMut<GlobalState>,
-) {
-    for (interaction, mut color, func, _) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Clicked => func.run(&mut *state),
-            Interaction::Hovered => {
-                *color = BUTTON_COLOR_HOVER.into();
-            }
-            Interaction::None => {
-                *color = BUTTON_COLOR_NONE.into();
-            }
-        }
-    }
-}
-
-fn main_exit_yes_button(
-    mut interaction_query: Query<
-        (
-            &Interaction,
-            &mut UiColor,
-            &Action<for<'a> fn(&'a mut EventWriter<AppExit>)>,
-            &Hierarchy<1>,
-        ),
-        (Changed<Interaction>, With<Button>),
-    >,
-    mut event: EventWriter<AppExit>,
-) {
-    for (interaction, mut color, func, _) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Clicked => func.run(&mut event),
-            Interaction::Hovered => {
-                *color = BUTTON_COLOR_HOVER.into();
-            }
-            Interaction::None => {
-                *color = BUTTON_COLOR_NONE.into();
-            }
-        }
-    }
-}
-
-fn create_button() -> ButtonBundle {
-    ButtonBundle {
-        style: Style {
-            size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-            // center button
-            margin: UiRect::all(Val::Auto),
-            // horizontally center child text
-            justify_content: JustifyContent::Center,
-            // vertically center child text
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        color: BUTTON_COLOR_NONE.into(),
-        ..default()
-    }
-}
-
-fn create_text(
-    text: impl Into<String>,
-    asset_server: &AssetServer,
-    size: f32,
-    color: Color,
-) -> TextBundle {
-    TextBundle::from_section(
-        text,
-        TextStyle {
-            font: asset_server.load(FONT_DIR),
-            font_size: size,
-            color,
-        },
-    )
-    .with_style(Style {
-        //center button
-        margin: UiRect {
-            top: Val::Px(size * 0.25),
-            ..default()
-        },
-        ..default()
-    })
-    .with_text_alignment(TextAlignment::CENTER)
-}
-
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<AssetServer>) {
     // ui camera
     commands
         .spawn_bundle(Camera2dBundle::default())
-        .insert(StateMark::new(AppState::MainMenu(None)));
+        .insert(state.mark());
 
     commands
         .spawn_bundle(create_button())
-        .insert(StateMark::new(AppState::MainMenu(None)))
+        .insert(state.mark())
         .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.replace(AppState::InGame),
+            |g: &mut GlobalState| g.replace(AppState::InGame(None)),
         ))
-        .insert(Hierarchy::<0>)
+        .insert(HierarchyMark::<0>)
         .with_children(|parent| {
             parent.spawn_bundle(create_text(
                 PLAY_TEXT,
@@ -191,11 +82,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands
         .spawn_bundle(create_button())
-        .insert(StateMark::new(AppState::MainMenu(None)))
+        .insert(state.mark())
         .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.push(MainMenuState::Exit),
+            |g: &mut GlobalState| g.push(MainMenuState::AppExit),
         ))
-        .insert(Hierarchy::<0>)
+        .insert(HierarchyMark::<0>)
         .with_children(|parent| {
             parent.spawn_bundle(create_text(
                 EXIT_TEXT,
@@ -206,7 +97,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_exit(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_exit(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -226,9 +117,7 @@ fn setup_exit(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
             ..default()
         })
-        .insert(StateMark::new(AppState::MainMenu(Some(
-            MainMenuState::Exit,
-        ))))
+        .insert(state.mark())
         .with_children(|parent| {
             parent
                 .spawn_bundle(NodeBundle {
@@ -254,7 +143,7 @@ fn setup_exit(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(Action::<for<'a> fn(&'a mut EventWriter<AppExit>)>::new(
                     |e: &mut EventWriter<AppExit>| e.send(AppExit),
                 ))
-                .insert(Hierarchy::<1>)
+                .insert(HierarchyMark::<1>)
                 .with_children(|parent| {
                     parent.spawn_bundle(create_text(
                         YES_TEXT,
@@ -269,7 +158,7 @@ fn setup_exit(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
                     |g: &mut GlobalState| g.pop(),
                 ))
-                .insert(Hierarchy::<1>)
+                .insert(HierarchyMark::<1>)
                 .with_children(|parent| {
                     parent.spawn_bundle(create_text(
                         NO_TEXT,
