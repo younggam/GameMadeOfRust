@@ -12,7 +12,7 @@ use bevy::{prelude::*, window::WindowSettings};
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
-            title: "Game made of Rust".to_string(),
+            title: "Game made with Rust".to_string(),
             ..default()
         })
         .insert_resource(WindowSettings {

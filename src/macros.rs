@@ -5,5 +5,5 @@ macro_rules! unreachable_release {
             debug_assert!(false, $info);
             std::hint::unreachable_unchecked();
         }
-    }
+    };
 }

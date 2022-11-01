@@ -6,22 +6,35 @@ use crate::unreachable_release;
 use bevy::{ecs::system::SystemState, prelude::*};
 
 macro_rules! stage_states {
-    ($($stage_name: ident),*; $members:tt) => {
-        $(#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-        pub enum $stage_name $members)*
+    ($global_name:ident; $($stage_name:ident),*; $common:tt $local:tt) => {
+        #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+        pub enum $global_name $common
+        $(
+            stage_states!(@ $stage_name $common $local);
+        )*
     };
+    (@ $stage_name:ident {$($common:ident),*} {$($local:ident),*}) => {
+        #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+        pub enum $stage_name {
+            $($common,)*
+            $($local),*
+        }
+    }
 }
 
 stage_states!(
-    AppState,
+    AppState;
     FirstStageState,
     PreUpdateStageState,
     UpdateStageState,
     PostUpdateStageState,
     LastStageState;
     {
-        MainMenu(Option<MainMenuState>),
-        InGame(Option<InGameState>),
+        MainMenu,
+        InGame
+    }
+    {
+        AppExit
     }
 );
 
@@ -30,168 +43,201 @@ pub trait PopState: Sized {
 }
 
 pub trait PushState {
-    const APP_EXIT: Self;
-
     fn push(self, parent: &mut AppState);
 }
 
 impl PopState for AppState {
     fn pop(self) -> Option<Self> {
-        match self {
-            AppState::MainMenu(Some(m)) => Some(AppState::MainMenu(m.pop())),
-            AppState::InGame(Some(i)) => Some(AppState::InGame(i.pop())),
-            _ => None,
-        }
+        // match self {
+        //     AppState::MainMenu(Some(m)) => Some(AppState::MainMenu(m.pop())),
+        //     AppState::InGame(Some(i)) => Some(AppState::InGame(i.pop())),
+        //     _ => None,
+        // }
+        None
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-pub enum MainMenuState {
-    AppExit,
-}
-
-impl PopState for MainMenuState {
-    fn pop(self) -> Option<Self> {
-        match self {
-            MainMenuState::AppExit => None,
-        }
-    }
-}
-
-impl PushState for MainMenuState {
-    const APP_EXIT: Self = MainMenuState::AppExit;
-
-    fn push(self, parent: &mut AppState) {
-        match *parent {
-            AppState::MainMenu(None) => *parent = AppState::MainMenu(Some(self)),
-            _ => unreachable_release!("There is no space to push"),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-pub enum InGameState {
-    AppExit,
-}
-
-impl PopState for InGameState {
-    fn pop(self) -> Option<Self> {
-        match self {
-            InGameState::AppExit => None,
-        }
-    }
-}
-
-impl PushState for InGameState {
-    const APP_EXIT: Self = InGameState::AppExit;
-
-    fn push(self, parent: &mut AppState) {
-        match *parent {
-            AppState::InGame(None) => *parent = AppState::InGame(Some(self)),
-            _ => unreachable_release!("There is no space to push"),
-        }
-    }
-}
+// #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+// pub enum MainMenuState {
+//     AppExit,
+// }
+//
+// impl PopState for MainMenuState {
+//     fn pop(self) -> Option<Self> {
+//         match self {
+//             MainMenuState::AppExit => None,
+//         }
+//     }
+// }
+//
+// impl PushState for MainMenuState {//
+//     fn push(self, parent: &mut AppState) {
+//         match *parent {
+//             AppState::MainMenu(None) => *parent = AppState::MainMenu(Some(self)),
+//             _ => unreachable_release!("There is no space to push"),
+//         }
+//     }
+// }
+//
+// #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+// pub enum InGameState {
+//     AppExit,
+// }
+//
+// impl PopState for InGameState {
+//     fn pop(self) -> Option<Self> {
+//         match self {
+//             InGameState::AppExit => None,
+//         }
+//     }
+// }
+//
+// impl PushState for InGameState {
+//     fn push(self, parent: &mut AppState) {
+//         match *parent {
+//             AppState::InGame(None) => *parent = AppState::InGame(Some(self)),
+//             _ => unreachable_release!("There is no space to push"),
+//         }
+//     }
+// }
 
 mod global {
     use crate::{states::*, unreachable_release};
 
     use bevy::prelude::Component;
 
-    #[derive(Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
-    pub struct Hierarchy(u32);
+    #[derive(Clone, Copy, Ord, PartialOrd, Debug, Eq, PartialEq)]
+    pub struct Hierarchy {
+        value: u32,
+        exit: bool,
+    }
 
     impl Hierarchy {
         pub const fn new<const N: u32>() -> Self {
-            Self(N)
+            Self {
+                value: N,
+                exit: false,
+            }
         }
 
         fn reset(&mut self) {
-            self.0 = 0
+            self.value = 0;
+            self.exit = false;
         }
 
         fn increment(&mut self) {
-            self.0 += 1
+            self.value += 1
         }
 
         fn decrement(&mut self) {
-            self.0 -= 1
+            self.value -= 1
         }
 
-        fn is<const N: u32>(&self) -> bool {
-            self.0 == N
+        fn set_exit(&mut self, exit: bool) {
+            self.exit = exit
+        }
+
+        fn is_exit(&self) -> bool {
+            self.exit
         }
     }
 
-    pub struct GlobalState(pub AppState, Hierarchy, StateChangeWay);
+    pub struct GlobalState {
+        app_state: AppState,
+        hierarchy: Hierarchy,
+        state_change_way: StateChangeWay,
+    }
 
     impl GlobalState {
         pub fn new(initial: AppState) -> Self {
-            Self(initial, Hierarchy::new::<0>(), StateChangeWay::None)
+            Self {
+                app_state: initial,
+                hierarchy: Hierarchy::new::<0>(),
+                state_change_way: StateChangeWay::None,
+            }
         }
 
-        pub fn is_hierarchy<const N: u32>(&self) -> bool {
-            self.1.is::<N>()
+        pub fn is_exit(&self) -> bool {
+            self.hierarchy.is_exit()
         }
 
         pub fn mark(&self) -> StateMark {
-            StateMark(self.0, self.1)
+            StateMark(self.app_state, self.hierarchy)
         }
 
         pub fn should_change(&self) -> bool {
-            self.2 != StateChangeWay::None
+            self.state_change_way != StateChangeWay::None
         }
 
-        pub fn apply_change(&mut self, mut f: impl FnMut(&AppState, &StateChangeWay)) {
-            if self.2 == StateChangeWay::None {
+        pub fn propagate_change(&mut self, mut f: impl FnMut(&AppState, bool, &StateChangeWay)) {
+            if self.state_change_way == StateChangeWay::None {
                 unreachable_release!("No state transition expected");
             }
-            f(&self.0, &self.2);
-            self.2 = StateChangeWay::None;
-        }
-
-        pub fn eq_major(&self, other: &AppState) -> bool {
-            match (self.0, other) {
-                (AppState::MainMenu(_), AppState::MainMenu(_))
-                | (AppState::InGame(_), AppState::InGame(_)) => true,
-                _ => false,
-            }
+            f(
+                &self.app_state,
+                self.is_exit(),
+                &self.state_change_way,
+            );
+            self.state_change_way = StateChangeWay::None;
         }
 
         pub fn should_clear(&self, other: &StateMark) -> bool {
-            self.1 < other.1 || (self.1 == other.1 && self.0 != other.0)
+            self.hierarchy < other.1 || (self.hierarchy == other.1 && self.app_state != other.0)
         }
 
         pub fn replace(&mut self, to: AppState) {
-            if self.eq_major(&to) {
-                unreachable_release!("Already in that major state");
-            } else if self.2 != StateChangeWay::None {
+            if match (self.app_state, to) {
+                (AppState::MainMenu, AppState::MainMenu) | (AppState::InGame, AppState::InGame) => {
+                    true
+                }
+                _ => false,
+            } {
+                unreachable_release!(
+                    "Already in that major state or target state hierarchy is not 0"
+                );
+            } else if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
             }
-            self.0 = to;
-            self.1.reset();
-            self.2 = StateChangeWay::Replace;
+            self.app_state = to;
+            self.hierarchy.reset();
+            self.state_change_way = StateChangeWay::Replace;
         }
 
         pub fn push<Child: PushState>(&mut self, child: Child) {
-            if self.2 != StateChangeWay::None {
+            if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
             }
-            child.push(&mut self.0);
-            self.1.increment();
-            self.2 = StateChangeWay::Push;
+            child.push(&mut self.app_state);
+            self.hierarchy.increment();
+            self.state_change_way = StateChangeWay::Push;
+        }
+
+        pub fn push_exit(&mut self) {
+            if self.state_change_way != StateChangeWay::None {
+                unreachable_release!("Already in state transition");
+            }
+            self.hierarchy.set_exit(true);
+            self.state_change_way = StateChangeWay::Push;
         }
 
         pub fn pop(&mut self) {
-            if self.2 != StateChangeWay::None {
+            if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
             }
-            self.0 = match self.0.pop() {
+            self.app_state = match self.app_state.pop() {
                 Some(a) => a,
-                _ => unreachable_release!("Already in state transition"),
+                _ => unreachable_release!("Already in that state"),
             };
-            self.1.decrement();
-            self.2 = StateChangeWay::Pop;
+            self.hierarchy.decrement();
+            self.state_change_way = StateChangeWay::Pop;
+        }
+
+        pub fn pop_exit(&mut self) {
+            if self.state_change_way != StateChangeWay::None {
+                unreachable_release!("Already in state transition");
+            }
+            self.hierarchy.set_exit(false);
+            self.state_change_way = StateChangeWay::Pop;
         }
     }
 
@@ -206,6 +252,7 @@ mod global {
     #[derive(Component)]
     pub struct StateMark(AppState, Hierarchy);
 }
+use crate::ui::{exit_close_requested, exit_no_button, exit_yes_button, setup_exit};
 pub use global::*;
 
 pub struct StatesPlugin;
@@ -216,18 +263,29 @@ impl Plugin for StatesPlugin {
         let clear_state_system_state = ClearStateSystemState::new(&mut app.world);
         app.insert_resource(manage_state_system_state)
             .insert_resource(clear_state_system_state)
-            .insert_resource(GlobalState::new(AppState::MainMenu(None)))
+            .insert_resource(GlobalState::new(AppState::MainMenu))
             //First
-            .add_state_to_stage(CoreStage::First, FirstStageState::MainMenu(None))
             .add_system_to_stage(CoreStage::First, manage_state.exclusive_system().at_start())
+            .add_state_to_stage(CoreStage::First, FirstStageState::MainMenu)
             //PreUpdate
-            .add_state_to_stage(CoreStage::PreUpdate, PreUpdateStageState::MainMenu(None))
+            .add_state_to_stage(CoreStage::PreUpdate, PreUpdateStageState::MainMenu)
             //Update
-            .add_state_to_stage(CoreStage::Update, UpdateStageState::MainMenu(None))
+            .add_state_to_stage(CoreStage::Update, UpdateStageState::MainMenu)
             //PostUpdate
-            .add_state_to_stage(CoreStage::PostUpdate, PostUpdateStageState::MainMenu(None))
+            .add_state_to_stage(CoreStage::PostUpdate, PostUpdateStageState::MainMenu)
             //Last
-            .add_state_to_stage(CoreStage::Last, LastStageState::MainMenu(None));
+            .add_state_to_stage(CoreStage::Last, LastStageState::MainMenu)
+            .add_system_set_to_stage(
+                CoreStage::PreUpdate,
+                SystemSet::on_enter(PreUpdateStageState::AppExit).with_system(setup_exit),
+            )
+            .add_system_set_to_stage(
+                CoreStage::Update,
+                SystemSet::on_update(UpdateStageState::AppExit)
+                    .with_system(exit_no_button)
+                    .with_system(exit_yes_button)
+                    .with_system(exit_close_requested),
+            );
     }
 }
 
@@ -245,57 +303,62 @@ fn manage_state(world: &mut World) {
         let (mut app_state, mut first, mut pre_update, mut update, mut post_update, mut last) =
             cached_state.get_mut(world);
         if app_state.should_change() {
-            app_state.apply_change(|state, change_way| {
-                match change_way {
-                    StateChangeWay::Replace => match *state {
-                        AppState::MainMenu(m) => {
-                            first.replace(FirstStageState::MainMenu(m)).unwrap();
-                            pre_update
-                                .replace(PreUpdateStageState::MainMenu(m))
-                                .unwrap();
-                            update.replace(UpdateStageState::MainMenu(m)).unwrap();
-                            post_update
-                                .replace(PostUpdateStageState::MainMenu(m))
-                                .unwrap();
-                            last.replace(LastStageState::MainMenu(m)).unwrap();
-                        }
-                        AppState::InGame(i) => {
-                            first.replace(FirstStageState::InGame(i)).unwrap();
-                            pre_update.replace(PreUpdateStageState::InGame(i)).unwrap();
-                            update.replace(UpdateStageState::InGame(i)).unwrap();
-                            post_update
-                                .replace(PostUpdateStageState::InGame(i))
-                                .unwrap();
-                            last.replace(LastStageState::InGame(i)).unwrap();
-                        }
-                    },
-                    StateChangeWay::Push => match *state {
-                        AppState::MainMenu(Some(m)) => {
-                            first.push(FirstStageState::MainMenu(Some(m))).unwrap();
-                            pre_update
-                                .push(PreUpdateStageState::MainMenu(Some(m)))
-                                .unwrap();
-                            update.push(UpdateStageState::MainMenu(Some(m))).unwrap();
-                            post_update
-                                .push(PostUpdateStageState::MainMenu(Some(m)))
-                                .unwrap();
-                            last.push(LastStageState::MainMenu(Some(m))).unwrap();
-                        }
-                        AppState::InGame(Some(i)) => {
-                            first.push(FirstStageState::InGame(Some(i))).unwrap();
-                            pre_update
-                                .push(PreUpdateStageState::InGame(Some(i)))
-                                .unwrap();
-                            update.push(UpdateStageState::InGame(Some(i))).unwrap();
-                            post_update
-                                .push(PostUpdateStageState::InGame(Some(i)))
-                                .unwrap();
-                            last.push(LastStageState::InGame(Some(i))).unwrap();
+            app_state.propagate_change(|state, is_exit, change_way| {
+                if is_exit {
+                    match change_way {
+                        StateChangeWay::Push => {
+                            first.push(FirstStageState::AppExit).unwrap();
+                            pre_update.push(PreUpdateStageState::AppExit).unwrap();
+                            update.push(UpdateStageState::AppExit).unwrap();
+                            post_update.push(PostUpdateStageState::AppExit).unwrap();
+                            last.push(LastStageState::AppExit).unwrap();
                         }
                         _ => unreachable_release!("State is interrupted"),
-                    },
-                    StateChangeWay::Pop => match state {
-                        AppState::MainMenu(None) | AppState::InGame(None) => {
+                    }
+                } else {
+                    match change_way {
+                        StateChangeWay::Replace => match *state {
+                            AppState::MainMenu => {
+                                first.replace(FirstStageState::MainMenu).unwrap();
+                                pre_update.replace(PreUpdateStageState::MainMenu).unwrap();
+                                update.replace(UpdateStageState::MainMenu).unwrap();
+                                post_update.replace(PostUpdateStageState::MainMenu).unwrap();
+                                last.replace(LastStageState::MainMenu).unwrap();
+                            }
+                            AppState::InGame => {
+                                first.replace(FirstStageState::InGame).unwrap();
+                                pre_update.replace(PreUpdateStageState::InGame).unwrap();
+                                update.replace(UpdateStageState::InGame).unwrap();
+                                post_update.replace(PostUpdateStageState::InGame).unwrap();
+                                last.replace(LastStageState::InGame).unwrap();
+                            }
+                        },
+                        // StateChangeWay::Push => match *state {
+                        //     AppState::MainMenu(Some(m)) => {
+                        //         first.push(FirstStageState::MainMenu(Some(m))).unwrap();
+                        //         pre_update
+                        //             .push(PreUpdateStageState::MainMenu(Some(m)))
+                        //             .unwrap();
+                        //         update.push(UpdateStageState::MainMenu(Some(m))).unwrap();
+                        //         post_update
+                        //             .push(PostUpdateStageState::MainMenu(Some(m)))
+                        //             .unwrap();
+                        //         last.push(LastStageState::MainMenu(Some(m))).unwrap();
+                        //     }
+                        //     AppState::InGame(Some(i)) => {
+                        //         first.push(FirstStageState::InGame(Some(i))).unwrap();
+                        //         pre_update
+                        //             .push(PreUpdateStageState::InGame(Some(i)))
+                        //             .unwrap();
+                        //         update.push(UpdateStageState::InGame(Some(i))).unwrap();
+                        //         post_update
+                        //             .push(PostUpdateStageState::InGame(Some(i)))
+                        //             .unwrap();
+                        //         last.push(LastStageState::InGame(Some(i))).unwrap();
+                        //     }
+                        //     _ => unreachable_release!("State is interrupted"),
+                        // },
+                        StateChangeWay::Pop => {
                             first.pop().unwrap();
                             pre_update.pop().unwrap();
                             update.pop().unwrap();
@@ -303,9 +366,8 @@ fn manage_state(world: &mut World) {
                             last.pop().unwrap();
                         }
                         _ => unreachable_release!("State is interrupted"),
-                    },
-                    _ => unreachable_release!("State is interrupted"),
-                };
+                    };
+                }
             });
 
             clear_state(world);
