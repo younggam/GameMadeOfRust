@@ -4,6 +4,7 @@ pub(crate) mod func;
 pub(crate) mod macros;
 pub(crate) mod states;
 pub(crate) mod ui;
+pub(crate) mod consts;
 
 use crate::states::{in_game::*, main_menu::*, *};
 

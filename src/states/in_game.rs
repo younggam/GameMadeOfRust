@@ -1,4 +1,7 @@
-use crate::{states::*, ui::*};
+use crate::{consts::*, states::*, ui::*};
+use bevy::input::mouse::MouseMotion;
+use bevy::math::quat;
+use std::iter::Sum;
 
 use bevy::prelude::*;
 
@@ -12,8 +15,62 @@ impl Plugin for InGamePlugin {
         )
         .add_system_set_to_stage(
             CoreStage::Update,
-            SystemSet::on_update(UpdateStageState::InGame).with_system(close_requested),
+            SystemSet::on_update(UpdateStageState::InGame)
+                .with_system(move_camera)
+                .with_system(close_requested),
         );
+    }
+}
+
+fn move_camera(
+    mut query: Query<(&Camera, &mut Transform)>,
+    input: Res<Input<KeyCode>>,
+    mut mouse: EventReader<MouseMotion>,
+    time: Res<Time>,
+) {
+    let delta = time.delta_seconds();
+    let mut motion = Vec2::ZERO;
+    if !mouse.is_empty() {
+        mouse.iter().for_each(|m| motion += m.delta);
+        println!("{motion}");
+        motion *= -delta;
+    }
+
+    let delta = delta * 10.0;
+    for (_, mut transform) in query.iter_mut() {
+        if motion != Vec2::ZERO {
+            let euler = transform.rotation.to_euler(EulerRot::YXZ);
+            println!("{:?}",euler);
+            transform.rotation = Quat::from_euler(
+                EulerRot::YXZ,
+                motion.x + euler.0,
+                (motion.y + euler.1).clamp(-GIMBAL_LOCK, GIMBAL_LOCK),
+                0.0,
+            );
+        }
+        let front = transform.forward();
+        let right = transform.right();
+        let up = Vec3::Y;
+        let mut to_move = Vec3::ZERO;
+        if input.any_pressed([KeyCode::W, KeyCode::Up]) {
+            to_move += front;
+        }
+        if input.any_pressed([KeyCode::A, KeyCode::Left]) {
+            to_move -= right;
+        }
+        if input.any_pressed([KeyCode::S, KeyCode::Down]) {
+            to_move -= front;
+        }
+        if input.any_pressed([KeyCode::D, KeyCode::Right]) {
+            to_move += right;
+        }
+        if input.pressed(KeyCode::Space) {
+            to_move += up;
+        }
+        if input.pressed(KeyCode::LShift) {
+            to_move -= up;
+        }
+        transform.translation += to_move.clamp_length_max(1.0) * delta;
     }
 }
 
@@ -25,7 +82,7 @@ fn setup(
 ) {
     commands
         .spawn_bundle(Camera3dBundle {
-            transform: Transform::from_xyz(-4.0, 100.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(-4.0, 100.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
         .insert(state.mark());
