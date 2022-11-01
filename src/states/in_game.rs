@@ -1,9 +1,6 @@
 use crate::{consts::*, states::*, ui::*};
-use bevy::input::mouse::MouseMotion;
-use bevy::math::quat;
-use std::iter::Sum;
 
-use bevy::prelude::*;
+use bevy::{input::mouse::MouseMotion, prelude::*};
 
 pub struct InGamePlugin;
 
@@ -32,7 +29,6 @@ fn move_camera(
     let mut motion = Vec2::ZERO;
     if !mouse.is_empty() {
         mouse.iter().for_each(|m| motion += m.delta);
-        println!("{motion}");
         motion *= -delta;
     }
 
@@ -40,7 +36,6 @@ fn move_camera(
     for (_, mut transform) in query.iter_mut() {
         if motion != Vec2::ZERO {
             let euler = transform.rotation.to_euler(EulerRot::YXZ);
-            println!("{:?}",euler);
             transform.rotation = Quat::from_euler(
                 EulerRot::YXZ,
                 motion.x + euler.0,
