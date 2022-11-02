@@ -37,10 +37,15 @@ pub fn close_requested(
 pub fn exit_close_requested(
     closed: EventReader<WindowCloseRequested>,
     mut event: EventWriter<AppExit>,
-    input: Res<Input<KeyCode>>,
 ) {
-    if !closed.is_empty() || input.just_pressed(KeyCode::Escape) {
+    if !closed.is_empty() {
         event.send(AppExit)
+    }
+}
+
+pub fn exit_esc(mut state: ResMut<GlobalState>, input: Res<Input<KeyCode>>) {
+    if input.just_pressed(KeyCode::Escape) {
+        state.pop_exit();
     }
 }
 

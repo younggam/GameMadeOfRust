@@ -173,11 +173,7 @@ mod global {
             if self.state_change_way == StateChangeWay::None {
                 unreachable_release!("No state transition expected");
             }
-            f(
-                &self.app_state,
-                self.is_exit(),
-                &self.state_change_way,
-            );
+            f(&self.app_state, self.is_exit(), &self.state_change_way);
             self.state_change_way = StateChangeWay::None;
         }
 
@@ -252,7 +248,7 @@ mod global {
     #[derive(Component)]
     pub struct StateMark(AppState, Hierarchy);
 }
-use crate::ui::{exit_close_requested, exit_no_button, exit_yes_button, setup_exit};
+use crate::ui::{exit_close_requested, exit_esc, exit_no_button, exit_yes_button, setup_exit};
 pub use global::*;
 
 pub struct StatesPlugin;
@@ -284,7 +280,8 @@ impl Plugin for StatesPlugin {
                 SystemSet::on_update(UpdateStageState::AppExit)
                     .with_system(exit_no_button)
                     .with_system(exit_yes_button)
-                    .with_system(exit_close_requested),
+                    .with_system(exit_close_requested)
+                    .with_system(exit_esc),
             );
     }
 }

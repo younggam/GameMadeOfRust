@@ -2,6 +2,9 @@ use crate::{consts::*, states::*, ui::*};
 
 use bevy::{input::mouse::MouseMotion, prelude::*};
 
+#[derive(Component)]
+pub struct Collider;
+
 pub struct InGamePlugin;
 
 impl Plugin for InGamePlugin {
@@ -9,6 +12,14 @@ impl Plugin for InGamePlugin {
         app.add_system_set_to_stage(
             CoreStage::PreUpdate,
             SystemSet::on_enter(PreUpdateStageState::InGame).with_system(setup),
+        )
+        .add_system_set_to_stage(
+            CoreStage::PreUpdate,
+            SystemSet::on_update(PreUpdateStageState::InGame).with_system(grab_cursor),
+        )
+        .add_system_set_to_stage(
+            CoreStage::PreUpdate,
+            SystemSet::on_pause(PreUpdateStageState::InGame).with_system(show_cursor),
         )
         .add_system_set_to_stage(
             CoreStage::Update,
@@ -23,13 +34,14 @@ fn move_camera(
     mut query: Query<(&Camera, &mut Transform)>,
     input: Res<Input<KeyCode>>,
     mut mouse: EventReader<MouseMotion>,
+    mut cursor: EventReader<CursorMoved>,
     time: Res<Time>,
 ) {
     let delta = time.delta_seconds();
     let mut motion = Vec2::ZERO;
-    if !mouse.is_empty() {
+    if !mouse.is_empty() && !cursor.is_empty() {
         mouse.iter().for_each(|m| motion += m.delta);
-        motion *= -delta;
+        motion *= -RADIANS * 0.08;
     }
 
     let delta = delta * 10.0;
@@ -77,7 +89,7 @@ fn setup(
 ) {
     commands
         .spawn_bundle(Camera3dBundle {
-            transform: Transform::from_xyz(-4.0, 100.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(-4.0, 10.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
         .insert(state.mark());
@@ -101,4 +113,32 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
+    // cube
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            material: materials.add(Color::WHITE.into()),
+            ..default()
+        })
+        .insert(state.mark());
+}
+
+fn grab_cursor(mut windows: ResMut<Windows>) {
+    let mut window = windows.primary_mut();
+    let cursor_visible = window.cursor_visible();
+    if window.is_focused() {
+        if cursor_visible {
+            window.set_cursor_lock_mode(true);
+            window.set_cursor_visibility(false);
+        }
+    } else if !cursor_visible {
+        window.set_cursor_lock_mode(false);
+        window.set_cursor_visibility(true);
+    }
+}
+
+fn show_cursor(mut windows: ResMut<Windows>) {
+    let mut window = windows.primary_mut();
+    window.set_cursor_lock_mode(false);
+    window.set_cursor_visibility(true);
 }
