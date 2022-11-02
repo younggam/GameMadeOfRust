@@ -2,6 +2,7 @@
 name = "game_made_with_rust"
 version = "0.1.0"
 edition = "2021"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,13 +11,18 @@ members = ["macros"]
 
 [dependencies]
 macros = { path = "macros" }
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [dependencies.bevy]
-version = "0.8.0"
+version = "0.8"
 
-[dev-dependencies.bevy]
-version = "0.8.0"
-features = ["dynamic", "trace"]
+[features]
+default = ["dev"]
+dev = [
+    "bevy/dynamic",
+#    "bevy/trace_chrome"
+]
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]
