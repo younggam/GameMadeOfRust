@@ -8,6 +8,8 @@ use crate::states::{in_game::*, main_menu::*, *};
 
 use bevy::{prelude::*, window::WindowSettings};
 
+use bevy_polyline::PolylinePlugin;
+
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
@@ -19,6 +21,7 @@ fn main() {
             ..default()
         })
         .add_plugins(DefaultPlugins)
+        .add_plugin(PolylinePlugin)
         .add_plugin(StatesPlugin)
         //Main Menu
         .add_plugin(MainMenuPlugin)

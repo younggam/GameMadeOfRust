@@ -1,6 +1,14 @@
 use crate::{consts::*, states::*, ui::*};
 
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{
+    input::mouse::MouseMotion,
+    prelude::{
+        shape::{Cube, Plane},
+        *,
+    },
+};
+
+use bevy_polyline::prelude::*;
 
 #[derive(Component)]
 pub struct Collider;
@@ -86,6 +94,8 @@ fn setup(
     state: Res<GlobalState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut polylines: ResMut<Assets<Polyline>>,
+    mut polyline_materials: ResMut<Assets<PolylineMaterial>>,
 ) {
     commands
         .spawn_bundle(Camera3dBundle {
@@ -93,7 +103,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // lightR
+    // point light
     commands
         .spawn_bundle(PointLightBundle {
             point_light: PointLight {
@@ -108,19 +118,48 @@ fn setup(
     // plane
     commands
         .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Plane { size: 100.0 })),
+            mesh: meshes.add(Plane { size: 100.0 }.into()),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             ..default()
         })
         .insert(state.mark());
-    // cube
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-            material: materials.add(Color::WHITE.into()),
+    // xyz line
+    commands.spawn_bundle(PolylineBundle {
+        polyline: polylines.add(Polyline {
+            vertices: vec![Vec3::ZERO, Vec3::X * 100.],
             ..default()
-        })
-        .insert(state.mark());
+        }),
+        material: polyline_materials.add(PolylineMaterial {
+            color: Color::RED,
+            perspective: true,
+            ..default()
+        }),
+        ..default()
+    });
+    commands.spawn_bundle(PolylineBundle {
+        polyline: polylines.add(Polyline {
+            vertices: vec![Vec3::ZERO, Vec3::Y * 100.],
+            ..default()
+        }),
+        material: polyline_materials.add(PolylineMaterial {
+            color: Color::GREEN,
+            perspective: true,
+            ..default()
+        }),
+        ..default()
+    });
+    commands.spawn_bundle(PolylineBundle {
+        polyline: polylines.add(Polyline {
+            vertices: vec![Vec3::ZERO, Vec3::Z * 100.],
+            ..default()
+        }),
+        material: polyline_materials.add(PolylineMaterial {
+            color: Color::BLUE,
+            perspective: true,
+            ..default()
+        }),
+        ..default()
+    });
 }
 
 fn grab_cursor(mut windows: ResMut<Windows>) {
