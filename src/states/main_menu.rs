@@ -48,7 +48,6 @@ fn setup(
     mut commands: Commands,
     state: Res<GlobalState>,
     res: Res<Fonts>,
-    assets: Res<Assets<Font>>,
 ) {
     // ui camera
     commands
@@ -66,7 +65,6 @@ fn setup(
             parent.spawn_bundle(create_text2(
                 PLAY_TEXT,
                 &res,
-                &assets,
                 30.0,
                 TEXT_COLOR_BRIGHT,
             ));
@@ -83,7 +81,6 @@ fn setup(
             parent.spawn_bundle(create_text2(
                 EXIT_TEXT,
                 &res,
-                &assets,
                 30.0,
                 TEXT_COLOR_BRIGHT,
             ));

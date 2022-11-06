@@ -113,44 +113,16 @@ pub fn create_button() -> ButtonBundle {
     }
 }
 
-// pub fn create_text(
-//     text: impl Into<String>,
-//     asset_server: &AssetServer,
-//     size: f32,
-//     color: Color,
-// ) -> TextBundle {
-//     TextBundle::from_section(
-//         text,
-//         TextStyle {
-//             font: asset_server.load(FONT_DIR),
-//             font_size: size,
-//             color,
-//         },
-//     )
-//     .with_style(Style {
-//         //center button
-//         margin: UiRect {
-//             top: Val::Px(size * 0.25),
-//             ..default()
-//         },
-//         ..default()
-//     })
-//     .with_text_alignment(TextAlignment::CENTER)
-// }
 pub fn create_text2(
     text: impl Into<String>,
     res: &Res<Fonts>,
-    assets: &Res<Assets<Font>>,
     size: f32,
     color: Color,
 ) -> TextBundle {
-    if assets.contains(res.get(&FONT_0).unwrap()) {
-        println!("{:?}", assets.get(res.get(&FONT_0).unwrap()).unwrap())
-    }
     TextBundle::from_section(
         text,
         TextStyle {
-            font: (*res.get(&FONT_0).unwrap()).clone(),
+            font: (*res.get(FONT_0).unwrap()).clone(),
             font_size: size,
             color,
         },
@@ -169,8 +141,7 @@ pub fn create_text2(
 pub fn setup_exit(
     mut commands: Commands,
     state: Res<GlobalState>,
-    res: Res<Fonts>,
-    assets: Res<Assets<Font>>,
+    fonts: Res<Fonts>,
 ) {
     commands
         .spawn_bundle(NodeBundle {
@@ -206,8 +177,7 @@ pub fn setup_exit(
                 .with_children(|parent| {
                     parent.spawn_bundle(create_text2(
                         ARE_YOU_SURE_TEXT,
-                        &res,
-                        &assets,
+                        &fonts,
                         30.0,
                         TEXT_COLOR_DARK,
                     ));
@@ -220,13 +190,7 @@ pub fn setup_exit(
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text2(
-                        YES_TEXT,
-                        &res,
-                        &assets,
-                        30.0,
-                        TEXT_COLOR_BRIGHT,
-                    ));
+                    parent.spawn_bundle(create_text2(YES_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
                 });
 
             parent
@@ -236,13 +200,7 @@ pub fn setup_exit(
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text2(
-                        NO_TEXT,
-                        &res,
-                        &assets,
-                        30.0,
-                        TEXT_COLOR_BRIGHT,
-                    ));
+                    parent.spawn_bundle(create_text2(NO_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
                 });
         });
 }
