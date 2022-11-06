@@ -2,10 +2,7 @@ use crate::{consts::*, states::*, ui::*};
 
 use bevy::{
     input::mouse::MouseMotion,
-    prelude::{
-        shape::{Cube, Plane},
-        *,
-    },
+    prelude::{shape::*, *},
 };
 
 use bevy_polyline::prelude::*;
@@ -42,7 +39,7 @@ fn move_camera(
     mut query: Query<(&Camera, &mut Transform)>,
     input: Res<Input<KeyCode>>,
     mut mouse: EventReader<MouseMotion>,
-    mut cursor: EventReader<CursorMoved>,
+    cursor: EventReader<CursorMoved>,
     time: Res<Time>,
 ) {
     let delta = time.delta_seconds();
@@ -103,15 +100,17 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // point light
+    // directional light
     commands
-        .spawn_bundle(PointLightBundle {
-            point_light: PointLight {
-                intensity: 1500.0,
-                shadows_enabled: true,
+        .spawn_bundle(DirectionalLightBundle {
+            directional_light: DirectionalLight {
+                illuminance: 32000.0,
                 ..default()
             },
-            transform: Transform::from_xyz(4.0, 8.0, 4.0),
+            transform: Transform {
+                rotation: Quat::from_rotation_x(-std::f32::consts::PI * 0.5),
+                ..default()
+            },
             ..default()
         })
         .insert(state.mark());
@@ -163,7 +162,7 @@ fn setup(
 }
 
 fn grab_cursor(mut windows: ResMut<Windows>) {
-    let mut window = windows.primary_mut();
+    let window = windows.primary_mut();
     let cursor_visible = window.cursor_visible();
     if window.is_focused() {
         if cursor_visible {
@@ -177,7 +176,7 @@ fn grab_cursor(mut windows: ResMut<Windows>) {
 }
 
 fn show_cursor(mut windows: ResMut<Windows>) {
-    let mut window = windows.primary_mut();
+    let window = windows.primary_mut();
     window.set_cursor_lock_mode(false);
     window.set_cursor_visibility(true);
 }

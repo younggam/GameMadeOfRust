@@ -1,4 +1,4 @@
-use crate::{func::*, states::*, ui::*};
+use crate::{func::*, states::*, ui::*, Fonts};
 
 use bevy::prelude::*;
 
@@ -44,7 +44,12 @@ fn button(
     }
 }
 
-fn setup(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    state: Res<GlobalState>,
+    res: Res<Fonts>,
+    assets: Res<Assets<Font>>,
+) {
     // ui camera
     commands
         .spawn_bundle(Camera2dBundle::default())
@@ -58,9 +63,10 @@ fn setup(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<Asse
         ))
         .insert(HierarchyMark::<0>)
         .with_children(|parent| {
-            parent.spawn_bundle(create_text(
+            parent.spawn_bundle(create_text2(
                 PLAY_TEXT,
-                &asset_server,
+                &res,
+                &assets,
                 30.0,
                 TEXT_COLOR_BRIGHT,
             ));
@@ -74,9 +80,10 @@ fn setup(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<Asse
         ))
         .insert(HierarchyMark::<0>)
         .with_children(|parent| {
-            parent.spawn_bundle(create_text(
+            parent.spawn_bundle(create_text2(
                 EXIT_TEXT,
-                &asset_server,
+                &res,
+                &assets,
                 30.0,
                 TEXT_COLOR_BRIGHT,
             ));

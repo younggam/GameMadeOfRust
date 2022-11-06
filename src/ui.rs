@@ -1,10 +1,7 @@
-use crate::{func::Action, states::*};
+use crate::{func::Action, states::*, Fonts};
 
-use bevy::{
-    app::AppExit, asset::AssetServer, input::Input, prelude::*, window::WindowCloseRequested,
-};
-
-pub const FONT_DIR: &str = "fonts/Schluber.otf";
+use crate::consts::FONT_0;
+use bevy::{app::AppExit, input::Input, prelude::*, window::WindowCloseRequested};
 
 pub const PLAY_TEXT: &str = "Play";
 pub const EXIT_TEXT: &str = "Exit";
@@ -116,16 +113,44 @@ pub fn create_button() -> ButtonBundle {
     }
 }
 
-pub fn create_text(
+// pub fn create_text(
+//     text: impl Into<String>,
+//     asset_server: &AssetServer,
+//     size: f32,
+//     color: Color,
+// ) -> TextBundle {
+//     TextBundle::from_section(
+//         text,
+//         TextStyle {
+//             font: asset_server.load(FONT_DIR),
+//             font_size: size,
+//             color,
+//         },
+//     )
+//     .with_style(Style {
+//         //center button
+//         margin: UiRect {
+//             top: Val::Px(size * 0.25),
+//             ..default()
+//         },
+//         ..default()
+//     })
+//     .with_text_alignment(TextAlignment::CENTER)
+// }
+pub fn create_text2(
     text: impl Into<String>,
-    asset_server: &AssetServer,
+    res: &Res<Fonts>,
+    assets: &Res<Assets<Font>>,
     size: f32,
     color: Color,
 ) -> TextBundle {
+    if assets.contains(res.get(&FONT_0).unwrap()) {
+        println!("{:?}", assets.get(res.get(&FONT_0).unwrap()).unwrap())
+    }
     TextBundle::from_section(
         text,
         TextStyle {
-            font: asset_server.load(FONT_DIR),
+            font: (*res.get(&FONT_0).unwrap()).clone(),
             font_size: size,
             color,
         },
@@ -141,7 +166,12 @@ pub fn create_text(
     .with_text_alignment(TextAlignment::CENTER)
 }
 
-pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, asset_server: Res<AssetServer>) {
+pub fn setup_exit(
+    mut commands: Commands,
+    state: Res<GlobalState>,
+    res: Res<Fonts>,
+    assets: Res<Assets<Font>>,
+) {
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -174,9 +204,10 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, asset_server:
                     ..default()
                 })
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text(
+                    parent.spawn_bundle(create_text2(
                         ARE_YOU_SURE_TEXT,
-                        &asset_server,
+                        &res,
+                        &assets,
                         30.0,
                         TEXT_COLOR_DARK,
                     ));
@@ -189,9 +220,10 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, asset_server:
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text(
+                    parent.spawn_bundle(create_text2(
                         YES_TEXT,
-                        &asset_server,
+                        &res,
+                        &assets,
                         30.0,
                         TEXT_COLOR_BRIGHT,
                     ));
@@ -204,9 +236,10 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, asset_server:
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text(
+                    parent.spawn_bundle(create_text2(
                         NO_TEXT,
-                        &asset_server,
+                        &res,
+                        &assets,
                         30.0,
                         TEXT_COLOR_BRIGHT,
                     ));
