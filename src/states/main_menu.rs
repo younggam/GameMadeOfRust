@@ -19,6 +19,35 @@ impl Plugin for MainMenuPlugin {
     }
 }
 
+fn setup(mut commands: Commands, state: Res<GlobalState>, res: Res<Fonts>) {
+    // ui camera
+    commands
+        .spawn_bundle(Camera2dBundle::default())
+        .insert(state.mark());
+    // play button
+    commands
+        .spawn_bundle(create_button())
+        .insert(state.mark())
+        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
+            |g: &mut GlobalState| g.replace(AppState::InGame),
+        ))
+        .insert(HierarchyMark::<0>)
+        .with_children(|parent| {
+            parent.spawn_bundle(create_text(PLAY_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
+        });
+    // exit button
+    commands
+        .spawn_bundle(create_button())
+        .insert(state.mark())
+        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
+            |g: &mut GlobalState| g.push_exit(),
+        ))
+        .insert(HierarchyMark::<0>)
+        .with_children(|parent| {
+            parent.spawn_bundle(create_text(EXIT_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
+        });
+}
+
 fn button(
     mut interaction_query: Query<
         (
@@ -42,47 +71,4 @@ fn button(
             }
         }
     }
-}
-
-fn setup(
-    mut commands: Commands,
-    state: Res<GlobalState>,
-    res: Res<Fonts>,
-) {
-    // ui camera
-    commands
-        .spawn_bundle(Camera2dBundle::default())
-        .insert(state.mark());
-
-    commands
-        .spawn_bundle(create_button())
-        .insert(state.mark())
-        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.replace(AppState::InGame),
-        ))
-        .insert(HierarchyMark::<0>)
-        .with_children(|parent| {
-            parent.spawn_bundle(create_text2(
-                PLAY_TEXT,
-                &res,
-                30.0,
-                TEXT_COLOR_BRIGHT,
-            ));
-        });
-
-    commands
-        .spawn_bundle(create_button())
-        .insert(state.mark())
-        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.push_exit(),
-        ))
-        .insert(HierarchyMark::<0>)
-        .with_children(|parent| {
-            parent.spawn_bundle(create_text2(
-                EXIT_TEXT,
-                &res,
-                30.0,
-                TEXT_COLOR_BRIGHT,
-            ));
-        });
 }

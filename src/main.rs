@@ -4,7 +4,7 @@ pub(crate) mod macros;
 pub(crate) mod states;
 pub(crate) mod ui;
 
-use crate::consts::FONT_0;
+use crate::consts::{FONT_SCHLUBER, UI, UI_CROSSHAIR};
 use crate::states::{in_game::*, main_menu::*, *};
 
 use bevy::utils::hashbrown::HashMap;
@@ -24,7 +24,8 @@ fn main() {
         })
         .add_plugins(DefaultPlugins)
         .init_resource::<Fonts>()
-        .add_startup_system(start_up)
+        .init_resource::<Textures>()
+        .add_startup_system(assets_set_up)
         .add_plugin(PolylinePlugin)
         .add_plugin(StatesPlugin)
         //Main Menu
@@ -35,10 +36,25 @@ fn main() {
 }
 
 pub(crate) type Fonts = HashMap<&'static str, Handle<Font>>;
+pub(crate) type Textures = [HashMap<&'static str, Handle<Image>>; 1];
 
-fn start_up(asset_server: Res<AssetServer>, mut fonts: ResMut<Fonts>) {
+fn assets_set_up(
+    asset_server: Res<AssetServer>,
+    mut fonts: ResMut<Fonts>,
+    mut textures: ResMut<Textures>,
+) {
     use std::path::Path;
-    //fonts
+    // fonts
     let fonts_dir = Path::new("fonts");
-    fonts.insert(FONT_0, asset_server.load(fonts_dir.join(FONT_0)));
+    fonts.insert(
+        FONT_SCHLUBER,
+        asset_server.load(fonts_dir.join(FONT_SCHLUBER)),
+    );
+    // textures
+    let textures_dir = Path::new("textures");
+    {
+        //ui
+        let ui_dir = textures_dir.join("ui");
+        textures[UI].insert(UI_CROSSHAIR, asset_server.load(ui_dir.join(UI_CROSSHAIR)));
+    }
 }

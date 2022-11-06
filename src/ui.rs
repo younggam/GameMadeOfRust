@@ -1,6 +1,6 @@
 use crate::{func::Action, states::*, Fonts};
 
-use crate::consts::FONT_0;
+use crate::consts::FONT_SCHLUBER;
 use bevy::{app::AppExit, input::Input, prelude::*, window::WindowCloseRequested};
 
 pub const PLAY_TEXT: &str = "Play";
@@ -113,16 +113,16 @@ pub fn create_button() -> ButtonBundle {
     }
 }
 
-pub fn create_text2(
+pub fn create_text(
     text: impl Into<String>,
-    res: &Res<Fonts>,
+    fonts: &Res<Fonts>,
     size: f32,
     color: Color,
 ) -> TextBundle {
     TextBundle::from_section(
         text,
         TextStyle {
-            font: (*res.get(FONT_0).unwrap()).clone(),
+            font: fonts[FONT_SCHLUBER].clone(),
             font_size: size,
             color,
         },
@@ -138,11 +138,7 @@ pub fn create_text2(
     .with_text_alignment(TextAlignment::CENTER)
 }
 
-pub fn setup_exit(
-    mut commands: Commands,
-    state: Res<GlobalState>,
-    fonts: Res<Fonts>,
-) {
+pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fonts>) {
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -175,7 +171,7 @@ pub fn setup_exit(
                     ..default()
                 })
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text2(
+                    parent.spawn_bundle(create_text(
                         ARE_YOU_SURE_TEXT,
                         &fonts,
                         30.0,
@@ -190,7 +186,7 @@ pub fn setup_exit(
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text2(YES_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
+                    parent.spawn_bundle(create_text(YES_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
                 });
 
             parent
@@ -200,7 +196,7 @@ pub fn setup_exit(
                 ))
                 .insert(AppExitMark)
                 .with_children(|parent| {
-                    parent.spawn_bundle(create_text2(NO_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
+                    parent.spawn_bundle(create_text(NO_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
                 });
         });
 }
