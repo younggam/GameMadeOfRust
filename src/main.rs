@@ -7,8 +7,7 @@ pub(crate) mod ui;
 use crate::consts::{FONT_SCHLUBER, UI, UI_CROSSHAIR};
 use crate::states::{in_game::*, main_menu::*, *};
 
-use bevy::utils::hashbrown::HashMap;
-use bevy::{prelude::*, window::WindowSettings};
+use bevy::{prelude::*, utils::hashbrown::HashMap, window::WindowSettings};
 
 use bevy_polyline::PolylinePlugin;
 
