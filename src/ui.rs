@@ -1,6 +1,5 @@
-use crate::{func::Action, states::*, Fonts};
+use crate::{consts::FONT_SCHLUBER, func::Action, states::*, Fonts};
 
-use crate::consts::FONT_SCHLUBER;
 use bevy::{app::AppExit, input::Input, prelude::*, window::WindowCloseRequested};
 
 pub const PLAY_TEXT: &str = "Play";
@@ -15,12 +14,15 @@ pub const TEXT_COLOR_DARK: Color = Color::BLACK;
 pub const BUTTON_COLOR_NONE: Color = Color::BLACK;
 pub const BUTTON_COLOR_HOVER: Color = Color::GRAY;
 
+///Mark hierarchy info of ui
 #[derive(Component)]
 pub struct HierarchyMark<const N: u32>;
 
+///Mark ui is for exit.
 #[derive(Component)]
 pub struct AppExitMark;
 
+///Go to exit state when requested.
 pub fn close_requested(
     closed: EventReader<WindowCloseRequested>,
     mut state: ResMut<GlobalState>,
@@ -31,6 +33,7 @@ pub fn close_requested(
     }
 }
 
+///Force app exit via close request on exit state.
 pub fn exit_close_requested(
     closed: EventReader<WindowCloseRequested>,
     mut event: EventWriter<AppExit>,
@@ -40,12 +43,14 @@ pub fn exit_close_requested(
     }
 }
 
+///Close exit state via esc.
 pub fn exit_esc(mut state: ResMut<GlobalState>, input: Res<Input<KeyCode>>) {
     if input.just_pressed(KeyCode::Escape) {
         state.pop_exit();
     }
 }
 
+///Interaction with no button of exit popup.
 pub fn exit_no_button(
     mut interaction_query: Query<
         (
@@ -71,6 +76,7 @@ pub fn exit_no_button(
     }
 }
 
+///Interaction with yes button of exit popup.
 pub fn exit_yes_button(
     mut interaction_query: Query<
         (
@@ -96,6 +102,7 @@ pub fn exit_yes_button(
     }
 }
 
+///Shortcut to create button.
 pub fn create_button() -> ButtonBundle {
     ButtonBundle {
         style: Style {
@@ -113,6 +120,7 @@ pub fn create_button() -> ButtonBundle {
     }
 }
 
+///Shortcut to create text.
 pub fn create_text(
     text: impl Into<String>,
     fonts: &Res<Fonts>,
@@ -138,7 +146,9 @@ pub fn create_text(
     .with_text_alignment(TextAlignment::CENTER)
 }
 
+///Setup exit popup.
 pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fonts>) {
+    //Node that represent popup.
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -160,6 +170,7 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
         })
         .insert(state.mark())
         .with_children(|parent| {
+            //Container for text.
             parent
                 .spawn_bundle(NodeBundle {
                     style: Style {
@@ -170,6 +181,7 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
                     },
                     ..default()
                 })
+                //text
                 .with_children(|parent| {
                     parent.spawn_bundle(create_text(
                         ARE_YOU_SURE_TEXT,
@@ -178,7 +190,7 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
                         TEXT_COLOR_DARK,
                     ));
                 });
-
+            //yes button
             parent
                 .spawn_bundle(create_button())
                 .insert(Action::<for<'a> fn(&'a mut EventWriter<AppExit>)>::new(
@@ -188,7 +200,7 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
                 .with_children(|parent| {
                     parent.spawn_bundle(create_text(YES_TEXT, &fonts, 30.0, TEXT_COLOR_BRIGHT));
                 });
-
+            //no button
             parent
                 .spawn_bundle(create_button())
                 .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(

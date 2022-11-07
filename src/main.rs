@@ -22,10 +22,13 @@ fn main() {
             ..default()
         })
         .add_plugins(DefaultPlugins)
+        //Asset manage helpers
         .init_resource::<Fonts>()
         .init_resource::<Textures>()
         .add_startup_system(assets_set_up)
+        //Polyline lib
         .add_plugin(PolylinePlugin)
+        //Global states manager
         .add_plugin(StatesPlugin)
         //Main Menu
         .add_plugin(MainMenuPlugin)
@@ -34,22 +37,25 @@ fn main() {
         .run();
 }
 
+///Font handle access by str.
 pub(crate) type Fonts = HashMap<&'static str, Handle<Font>>;
+///Image handle access by str. Which name should be sank to whether type or path?
 pub(crate) type Textures = [HashMap<&'static str, Handle<Image>>; 1];
 
+///Load assets and map them to str.
 fn assets_set_up(
     asset_server: Res<AssetServer>,
     mut fonts: ResMut<Fonts>,
     mut textures: ResMut<Textures>,
 ) {
     use std::path::Path;
-    // fonts
+    //fonts
     let fonts_dir = Path::new("fonts");
     fonts.insert(
         FONT_SCHLUBER,
         asset_server.load(fonts_dir.join(FONT_SCHLUBER)),
     );
-    // textures
+    //textures
     let textures_dir = Path::new("textures");
     {
         //ui

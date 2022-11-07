@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 pub struct MainMenuPlugin;
 
+///Batch setup for Main menu.
 impl Plugin for MainMenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_system_set_to_stage(
@@ -19,12 +20,13 @@ impl Plugin for MainMenuPlugin {
     }
 }
 
+///Setup system in Main menu.
 fn setup(mut commands: Commands, state: Res<GlobalState>, res: Res<Fonts>) {
-    // ui camera
+    //ui camera
     commands
         .spawn_bundle(Camera2dBundle::default())
         .insert(state.mark());
-    // play button
+    //play button
     commands
         .spawn_bundle(create_button())
         .insert(state.mark())
@@ -35,7 +37,7 @@ fn setup(mut commands: Commands, state: Res<GlobalState>, res: Res<Fonts>) {
         .with_children(|parent| {
             parent.spawn_bundle(create_text(PLAY_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
         });
-    // exit button
+    //exit button
     commands
         .spawn_bundle(create_button())
         .insert(state.mark())
@@ -48,6 +50,7 @@ fn setup(mut commands: Commands, state: Res<GlobalState>, res: Res<Fonts>) {
         });
 }
 
+///Buttons interaction system.
 fn button(
     mut interaction_query: Query<
         (

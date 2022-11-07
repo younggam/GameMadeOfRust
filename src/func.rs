@@ -2,6 +2,7 @@ use macros::impl_with_tuples;
 
 use bevy::prelude::Component;
 
+///Container component for function.
 #[derive(Component)]
 pub struct Action<F>(F);
 
@@ -11,6 +12,7 @@ impl<F> Action<F> {
     }
 }
 
+///impl Action for various function types.
 macro_rules! impl_action {
     ($($param: ident),*) => {
         impl<$($param),*> Action<fn($($param),*)>{

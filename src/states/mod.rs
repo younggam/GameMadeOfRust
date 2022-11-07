@@ -5,19 +5,20 @@ use crate::unreachable_release;
 
 use bevy::{ecs::system::SystemState, prelude::*};
 
+///Auto declare and impl states' per stages common parts.
 macro_rules! stage_states {
-    ($global_name:ident; $($stage_name:ident),*; $common:tt $local:tt) => {
+    ($global_name:ident; $($stage_name:ident),*; $locals:tt $global:tt) => {
         #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-        pub enum $global_name $common
+        pub enum $global_name $locals
         $(
-            stage_states!(@ $stage_name $common $local);
+            stage_states!(@ $stage_name $locals $global);
         )*
     };
-    (@ $stage_name:ident {$($common:ident),*} {$($local:ident),*}) => {
+    (@ $stage_name:ident {$($locals:ident),*} {$($global:ident),*}) => {
         #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
         pub enum $stage_name {
-            $($common,)*
-            $($local),*
+            $($locals,)*
+            $($global),*
         }
     }
 }
@@ -38,10 +39,12 @@ stage_states!(
     }
 );
 
+///Trait for States that could be pop.
 pub trait PopState: Sized {
     fn pop(self) -> Option<Self>;
 }
 
+///Trait for States that can push itself to state.
 pub trait PushState {
     fn push(self, parent: &mut AppState);
 }
@@ -101,11 +104,13 @@ impl PopState for AppState {
 //     }
 // }
 
+///Intentionally privacy for external mods to avoid disruptive mistakes.
 mod global {
     use crate::{states::*, unreachable_release};
 
     use bevy::prelude::Component;
 
+    ///Metadata of how much state is stacked and whether about to exit.
     #[derive(Clone, Copy, Ord, PartialOrd, Debug, Eq, PartialEq)]
     pub struct Hierarchy {
         value: u32,
@@ -125,14 +130,17 @@ mod global {
             self.exit = false;
         }
 
+        ///increment only hierarchy.
         fn increment(&mut self) {
             self.value += 1
         }
 
+        ///decrement only hierarchy.
         fn decrement(&mut self) {
             self.value -= 1
         }
 
+        ///sets only whether about to exit.
         fn set_exit(&mut self, exit: bool) {
             self.exit = exit
         }
@@ -142,6 +150,7 @@ mod global {
         }
     }
 
+    ///A unique global state metadata.
     pub struct GlobalState {
         app_state: AppState,
         hierarchy: Hierarchy,
@@ -161,6 +170,7 @@ mod global {
             self.hierarchy.is_exit()
         }
 
+        ///Mark to entities that stick to state.
         pub fn mark(&self) -> StateMark {
             StateMark(self.app_state, self.hierarchy)
         }
@@ -169,6 +179,7 @@ mod global {
             self.state_change_way != StateChangeWay::None
         }
 
+        ///Applies state change via closure.
         pub fn propagate_change(&mut self, mut f: impl FnMut(&AppState, bool, &StateChangeWay)) {
             if self.state_change_way == StateChangeWay::None {
                 unreachable_release!("No state transition expected");
@@ -177,10 +188,12 @@ mod global {
             self.state_change_way = StateChangeWay::None;
         }
 
+        ///Whether state of entity originated is outdated.
         pub fn should_clear(&self, other: &StateMark) -> bool {
             self.hierarchy < other.1 || (self.hierarchy == other.1 && self.app_state != other.0)
         }
 
+        ///Force major state. Equivalent to Schedule::replace.
         pub fn replace(&mut self, to: AppState) {
             if match (self.app_state, to) {
                 (AppState::MainMenu, AppState::MainMenu) | (AppState::InGame, AppState::InGame) => {
@@ -199,6 +212,7 @@ mod global {
             self.state_change_way = StateChangeWay::Replace;
         }
 
+        ///Stacks minor state. Equivalent to Schedule::push
         pub fn push<Child: PushState>(&mut self, child: Child) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
@@ -208,6 +222,7 @@ mod global {
             self.state_change_way = StateChangeWay::Push;
         }
 
+        ///Stacks exit state. Equivalent to Schedule::push
         pub fn push_exit(&mut self) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
@@ -216,6 +231,7 @@ mod global {
             self.state_change_way = StateChangeWay::Push;
         }
 
+        ///Releases minor state. Equivalent to Schedule::pop
         pub fn pop(&mut self) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
@@ -228,6 +244,7 @@ mod global {
             self.state_change_way = StateChangeWay::Pop;
         }
 
+        ///Releases exit state. Equivalent to Schedule::pop
         pub fn pop_exit(&mut self) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
@@ -237,6 +254,7 @@ mod global {
         }
     }
 
+    ///Describes how state change be propagated.
     #[derive(Clone, Copy, Eq, PartialEq, Debug)]
     pub enum StateChangeWay {
         None,
@@ -245,12 +263,14 @@ mod global {
         Pop,
     }
 
+    ///State metadata component for entity.
     #[derive(Component)]
     pub struct StateMark(AppState, Hierarchy);
 }
 use crate::ui::{exit_close_requested, exit_esc, exit_no_button, exit_yes_button, setup_exit};
 pub use global::*;
 
+///Batch setup of state managing.
 pub struct StatesPlugin;
 
 impl Plugin for StatesPlugin {
@@ -271,6 +291,7 @@ impl Plugin for StatesPlugin {
             .add_state_to_stage(CoreStage::PostUpdate, PostUpdateStageState::MainMenu)
             //Last
             .add_state_to_stage(CoreStage::Last, LastStageState::MainMenu)
+            //Exit
             .add_system_set_to_stage(
                 CoreStage::PreUpdate,
                 SystemSet::on_enter(PreUpdateStageState::AppExit).with_system(setup_exit),
@@ -295,12 +316,15 @@ type ManageStateSystemState<'w> = SystemState<(
     ResMut<'w, State<LastStageState>>,
 )>;
 
+///Exclusive system that propagates state change.
 fn manage_state(world: &mut World) {
     world.resource_scope(|world, mut cached_state: Mut<ManageStateSystemState>| {
         let (mut app_state, mut first, mut pre_update, mut update, mut post_update, mut last) =
             cached_state.get_mut(world);
+        //When global state is changed.
         if app_state.should_change() {
             app_state.propagate_change(|state, is_exit, change_way| {
+                //About to exit state.
                 if is_exit {
                     match change_way {
                         StateChangeWay::Push => {
@@ -312,8 +336,11 @@ fn manage_state(world: &mut World) {
                         }
                         _ => unreachable_release!("State is interrupted"),
                     }
-                } else {
+                }
+                //General state shifting.
+                else {
                     match change_way {
+                        //Replace major to major.
                         StateChangeWay::Replace => match *state {
                             AppState::MainMenu => {
                                 first.replace(FirstStageState::MainMenu).unwrap();
@@ -330,6 +357,7 @@ fn manage_state(world: &mut World) {
                                 last.replace(LastStageState::InGame).unwrap();
                             }
                         },
+                        //Push minor state.
                         // StateChangeWay::Push => match *state {
                         //     AppState::MainMenu(Some(m)) => {
                         //         first.push(FirstStageState::MainMenu(Some(m))).unwrap();
@@ -355,6 +383,7 @@ fn manage_state(world: &mut World) {
                         //     }
                         //     _ => unreachable_release!("State is interrupted"),
                         // },
+                        //Pop minor or exit state.
                         StateChangeWay::Pop => {
                             first.pop().unwrap();
                             pre_update.pop().unwrap();
@@ -378,15 +407,18 @@ type ClearStateSystemState<'w, 's> = SystemState<(
     Res<'w, GlobalState>,
 )>;
 
+///Clears remaining entities that doesn't fit with state.
 fn clear_state(world: &mut World) {
     world.resource_scope(|world, mut cached_state: Mut<ClearStateSystemState>| {
         let (mut commands, mut despawn_entities_query, app_state) = cached_state.get_mut(world);
         let app_state = app_state.into_inner();
         for (entity, state_mark) in despawn_entities_query.iter_mut() {
             if app_state.should_clear(state_mark) {
+                //Also despawn childs.
                 commands.entity(entity).despawn_recursive();
             }
         }
+        //Applying commands to world immediately.
         cached_state.apply(world);
     });
 }

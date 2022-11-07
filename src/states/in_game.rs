@@ -1,9 +1,11 @@
 use crate::{consts::*, states::*, ui::*, Textures};
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
-use std::ops::{Add, Deref, Sub};
 
-use bevy::math::DVec3;
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+    ops::{Add, Deref, Sub},
+};
+
 use bevy::{
     input::mouse::MouseMotion,
     prelude::{shape::Plane, *},
@@ -11,6 +13,7 @@ use bevy::{
 
 use bevy_polyline::prelude::*;
 
+///Batch setup for In game.
 pub struct InGamePlugin;
 
 impl Plugin for InGamePlugin {
@@ -36,6 +39,7 @@ impl Plugin for InGamePlugin {
     }
 }
 
+///Setup system in game.
 fn setup(
     mut commands: Commands,
     state: Res<GlobalState>,
@@ -46,14 +50,14 @@ fn setup(
     mut polyline_materials: ResMut<Assets<PolylineMaterial>>,
     windows: Res<Windows>,
 ) {
-    // camera
+    //camera
     commands
         .spawn_bundle(Camera3dBundle {
             transform: Transform::from_xyz(-4.0, 10.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
         .insert(state.mark());
-    // crosshair
+    //crosshair
     let window = windows.primary();
     commands
         .spawn_bundle(ImageBundle {
@@ -72,7 +76,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // directional light
+    //directional light
     commands
         .spawn_bundle(DirectionalLightBundle {
             directional_light: DirectionalLight {
@@ -86,7 +90,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // plane
+    //plane
     commands
         .spawn_bundle(PbrBundle {
             mesh: meshes.add(Plane { size: 100.0 }.into()),
@@ -94,7 +98,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // x axis line
+    //x axis line
     commands
         .spawn_bundle(PolylineBundle {
             polyline: polylines.add(Polyline {
@@ -109,7 +113,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // y axis line
+    //y axis line
     commands
         .spawn_bundle(PolylineBundle {
             polyline: polylines.add(Polyline {
@@ -124,7 +128,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // z axis line
+    //z axis line
     commands
         .spawn_bundle(PolylineBundle {
             polyline: polylines.add(Polyline {
@@ -139,33 +143,39 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    // Octree
+    //Octree
     commands
         .spawn()
         .insert(OctreeNode::new(64., Vec3::new(0., 32., 0.)))
         .insert(state.mark());
 }
 
+///locks cursor to window while in game.
 fn grab_cursor(mut windows: ResMut<Windows>) {
     let window = windows.primary_mut();
     let cursor_visible = window.cursor_visible();
     if window.is_focused() {
+        //if window is focused and cursor is visible, lock.
         if cursor_visible {
             window.set_cursor_lock_mode(true);
             window.set_cursor_visibility(false);
         }
-    } else if !cursor_visible {
+    }
+    //if window isn't focused and cursor is invisible, release.
+    else if !cursor_visible {
         window.set_cursor_lock_mode(false);
         window.set_cursor_visibility(true);
     }
 }
 
+///Release cursor when about to exit.
 fn show_cursor(mut windows: ResMut<Windows>) {
     let window = windows.primary_mut();
     window.set_cursor_lock_mode(false);
     window.set_cursor_visibility(true);
 }
 
+///Camera control system.
 fn move_camera(
     mut query: Query<&mut Transform, With<Camera>>,
     input: Res<Input<KeyCode>>,
@@ -173,15 +183,16 @@ fn move_camera(
     cursor: EventReader<CursorMoved>,
     time: Res<Time>,
 ) {
-    let delta = time.delta_seconds();
+    //mouse motion to angular delta.
     let mut motion = Vec2::ZERO;
     if !mouse.is_empty() && !cursor.is_empty() {
         mouse.iter().for_each(|m| motion += m.delta);
         motion *= -RADIANS * 0.08;
     }
 
-    let delta = delta * 10.0;
+    let delta = time.delta_seconds() * 10.0;
     for mut transform in query.iter_mut() {
+        //camera rotation by mouse motion.
         if motion != Vec2::ZERO {
             let euler = transform.rotation.to_euler(EulerRot::YXZ);
             transform.rotation = Quat::from_euler(
@@ -191,6 +202,7 @@ fn move_camera(
                 0.0,
             );
         }
+        //Accumulate move direction from keyboard inputs.
         let front = transform.forward();
         let right = transform.right();
         let up = Vec3::Y;
@@ -213,13 +225,16 @@ fn move_camera(
         if input.pressed(KeyCode::LShift) {
             to_move -= up;
         }
+        //apply
         transform.translation += to_move.clamp_length_max(1.0) * delta;
     }
 }
 
+///Currently marks whether entity could be collide.
 #[derive(Component)]
 pub struct Collides;
 
+///Aabb box. Min value must smaller or equal than Max value in every axis.
 #[derive(Component, Clone, Copy)]
 pub struct BoundingBox {
     min: Vec3,
@@ -234,6 +249,7 @@ impl BoundingBox {
         Self { min, max }
     }
 
+    ///Determine min and max from size and offset.
     pub fn from_size(size: f32, offset: Vec3) -> Self {
         Self {
             min: offset - size * 0.5,
@@ -273,6 +289,7 @@ impl BoundingBox {
         (self.min.z + self.max.z) * 0.5
     }
 
+    ///Determines which octant from origin this box is placed. True is positive, false is negative.
     pub fn octants(&self) -> Option<BVec3> {
         let x_p = self.min.x > 0. && self.max.x > 0.;
         let x_n = self.min.x < 0. && self.max.x < 0.;
@@ -280,6 +297,7 @@ impl BoundingBox {
         let y_n = self.min.y < 0. && self.max.y < 0.;
         let z_p = self.min.z > 0. && self.max.z > 0.;
         let z_n = self.min.z < 0. && self.max.z < 0.;
+        //+0.0 and -0.0 is not allowed.
         if x_p ^ x_n && y_p ^ y_n && z_p ^ z_n {
             Some(BVec3::new(x_p, y_p, z_p))
         } else {
@@ -287,6 +305,7 @@ impl BoundingBox {
         }
     }
 
+    ///Get octant of this box's center as origin.
     pub fn get_octant(&self, x: bool, y: bool, z: bool) -> Self {
         let (min_x, max_x) = if x {
             (self.center_x(), self.max.x)
@@ -354,6 +373,7 @@ impl Sub<Vec3> for BoundingBox {
     }
 }
 
+///Container for entity and bounding box for octree.
 #[derive(Copy, Clone)]
 struct OctreeEntity {
     entity: Entity,
@@ -394,10 +414,14 @@ impl Ord for OctreeEntity {
     }
 }
 
+///Octree that 3 dimensional version of binary heap. Useful for broad collision via aabb.
 #[derive(Component)]
 pub struct OctreeNode {
+    ///Bound of itself.
     bound: BoundingBox,
+    ///Entities that a few or doesn't fit with leaves.
     entities: BTreeSet<OctreeEntity>,
+    ///Leaf nodes that divides space.
     leaves: BTreeMap<u32, OctreeNode>,
 }
 
@@ -414,10 +438,11 @@ impl OctreeNode {
         }
     }
 
+    ///System for applying despawn of entities that collides. Recommended to use this before CoreStage::Last
     pub fn removal_system(
         mut octree: Query<&mut OctreeNode>,
         removals: RemovedComponents<Collides>,
-        query: Query<(&Transform, &BoundingBox), Added<Collides>>,
+        query: Query<(&Transform, &BoundingBox)>,
     ) {
         let mut octree = octree.single_mut();
         for entity in removals.iter() {
@@ -426,6 +451,8 @@ impl OctreeNode {
         }
     }
 
+    ///System for applying spawn of entities that collides.
+    ///Recommended to use this before removal_system to prevent fragmentation of memory
     pub fn insertion_system(
         mut octree: Query<&mut OctreeNode>,
         query: Query<(Entity, &Transform, &BoundingBox), Added<Collides>>,
@@ -438,6 +465,7 @@ impl OctreeNode {
 
     pub fn collision_system() {}
 
+    ///Quick conversion from octant to leaf index.
     const fn octant_to_index(&self, x: bool, y: bool, z: bool) -> u32 {
         const STEP_X: u32 = 4;
         const STEP_Y: u32 = 2;
@@ -445,17 +473,23 @@ impl OctreeNode {
         STEP_X * x as u32 + STEP_Y * y as u32 + STEP_Z * z as u32
     }
 
+    ///Return is whether entity doesn't already exist.
     pub fn insert(&mut self, entity: Entity, bound: BoundingBox) -> bool {
         self.insert_inner(OctreeEntity::new(entity, bound))
     }
 
     fn insert_inner(&mut self, entity: OctreeEntity) -> bool {
-        // kinda threshold
-        if self.entities.len() >= 4 {
+        //Kinda threshold to prevent frequent division.
+        if self.entities.len() < 4 {
+            self.entities.insert(entity)
+        }
+        //Try relocating entities to leaves.
+        else {
             let center = self.bound.center();
+            //Temporal container for relocating.
             let mut to_leaves =
                 Vec::<(OctreeEntity, bool, bool, bool)>::with_capacity(self.entities.len() + 1);
-
+            //Pure new determined first.
             let mut ret = match (entity.bound - center).octants() {
                 Some(BVec3 { x, y, z }) => {
                     to_leaves.push((entity, x, y, z));
@@ -463,7 +497,7 @@ impl OctreeNode {
                 }
                 None => self.entities.insert(entity),
             };
-
+            //Determine existing entities.
             self.entities
                 .retain(|&entity| match (entity.bound - center).octants() {
                     Some(BVec3 { x, y, z }) => {
@@ -472,7 +506,7 @@ impl OctreeNode {
                     }
                     None => true,
                 });
-
+            //Force put candidates to leaf.
             for (entity, x, y, z) in to_leaves {
                 let i = self.octant_to_index(x, y, z);
                 ret &= match self.leaves.get_mut(&i) {
@@ -486,11 +520,10 @@ impl OctreeNode {
                 };
             }
             ret
-        } else {
-            self.entities.insert(entity)
         }
     }
 
+    ///Return is whether existed entity is removed.
     pub fn remove(&mut self, entity: Entity, bound: BoundingBox) -> bool {
         self.remove_inner(OctreeEntity::new(entity, bound))
     }
