@@ -56,7 +56,7 @@ pub fn impl_with_tuples(input: TokenStream) -> TokenStream {
         new_stream.push(macro_ident.clone());
         new_stream.push(TokenTree::Punct(Punct::new('!', Spacing::Alone)));
         //Contents inner macro call parenthesis.
-        let mut call_stream = Vec::<TokenTree>::with_capacity(i);
+        let mut call_stream = Vec::<TokenTree>::with_capacity(i - start);
         //Writes generic name from prefix and index.
         for j in start..i {
             call_stream.push(TokenTree::Ident(Ident::new(

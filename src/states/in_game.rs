@@ -3,9 +3,11 @@ use crate::{consts::*, states::*, ui::*, Textures};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
+    f32::consts::PI,
     ops::{Add, Deref, Sub},
 };
 
+use bevy::prelude::shape::Cube;
 use bevy::{
     input::mouse::MouseMotion,
     prelude::{shape::Plane, *},
@@ -34,7 +36,14 @@ impl Plugin for InGamePlugin {
             CoreStage::Update,
             SystemSet::on_update(UpdateStageState::InGame)
                 .with_system(move_camera)
+                .with_system(place)
                 .with_system(close_requested),
+        )
+        .add_system_set_to_stage(
+            CoreStage::PostUpdate,
+            SystemSet::on_update(PostUpdateStageState::InGame)
+                .with_system(OctreeNode::removal_system)
+                .with_system(OctreeNode::insertion_system),
         );
     }
 }
@@ -84,7 +93,7 @@ fn setup(
                 ..default()
             },
             transform: Transform {
-                rotation: Quat::from_rotation_x(-std::f32::consts::PI * 0.5),
+                rotation: Quat::from_euler(EulerRot::ZYX, 0., PI * 0.25, -PI * 0.4),
                 ..default()
             },
             ..default()
@@ -180,12 +189,11 @@ fn move_camera(
     mut query: Query<&mut Transform, With<Camera>>,
     input: Res<Input<KeyCode>>,
     mut mouse: EventReader<MouseMotion>,
-    cursor: EventReader<CursorMoved>,
     time: Res<Time>,
 ) {
     //mouse motion to angular delta.
     let mut motion = Vec2::ZERO;
-    if !mouse.is_empty() && !cursor.is_empty() {
+    if !mouse.is_empty() {
         mouse.iter().for_each(|m| motion += m.delta);
         motion *= -RADIANS * 0.08;
     }
@@ -249,8 +257,16 @@ impl BoundingBox {
         Self { min, max }
     }
 
+    ///Determine min and max from size and zero offset.
+    pub fn from_size(size: f32) -> Self {
+        Self {
+            min: Vec3::splat(-size * 0.5),
+            max: Vec3::splat(size * 0.5),
+        }
+    }
+
     ///Determine min and max from size and offset.
-    pub fn from_size(size: f32, offset: Vec3) -> Self {
+    pub fn from_size_offset(size: f32, offset: Vec3) -> Self {
         Self {
             min: offset - size * 0.5,
             max: offset + size * 0.5,
@@ -326,6 +342,33 @@ impl BoundingBox {
             Vec3::new(min_x, min_y, min_z),
             Vec3::new(max_x, max_y, max_z),
         )
+    }
+
+    ///Checks whether this and other bounding box intersected.
+    pub fn intersects(&self, other: &Self) -> bool {
+        self.min.cmplt(other.max).all() && self.max.cmpgt(other.min).all()
+    }
+
+    ///Checks whether point is in bounding box.
+    pub fn overlaps_point(&self, point: Vec3) -> bool {
+        self.min.cmplt(point).all() && self.max.cmplt(point).all()
+    }
+
+    ///Checks if ray is penetrating box.
+    pub fn intersects_ray(&self, origin: Vec3, dir: Vec3) -> Option<f32> {
+        let t_1 = (self.min - origin) / dir;
+        let t_2 = (self.max - origin) / dir;
+        let t_min = t_1.min(t_2);
+        let t_max = t_1.max(t_2);
+        let min_max = t_min.x.max(t_min.y).max(t_min.z);
+        let max_min = t_max.x.min(t_max.y).min(t_max.z);
+        if max_min <= 0. || min_max > max_min {
+            None
+        } else if min_max <= 0. {
+            Some(max_min)
+        } else {
+            Some(min_max)
+        }
     }
 }
 
@@ -427,7 +470,7 @@ pub struct OctreeNode {
 
 impl OctreeNode {
     pub fn new(size: f32, offset: Vec3) -> OctreeNode {
-        Self::from_bound(BoundingBox::from_size(size, offset))
+        Self::from_bound(BoundingBox::from_size_offset(size, offset))
     }
 
     pub fn from_bound(bound: BoundingBox) -> Self {
@@ -471,6 +514,11 @@ impl OctreeNode {
         const STEP_Y: u32 = 2;
         const STEP_Z: u32 = 1;
         STEP_X * x as u32 + STEP_Y * y as u32 + STEP_Z * z as u32
+    }
+
+    ///If node and its leaves entirely empty.
+    pub fn is_empty(&self) -> bool {
+        self.entities.is_empty() && self.leaves.is_empty()
     }
 
     ///Return is whether entity doesn't already exist.
@@ -535,7 +583,7 @@ impl OctreeNode {
                 match self.leaves.get_mut(&i) {
                     Some(leaf) => {
                         let ret = leaf.remove_inner(entity);
-                        if ret && leaf.entities.is_empty() {
+                        if ret && leaf.is_empty() {
                             self.leaves.remove(&i);
                         }
                         ret
@@ -545,5 +593,98 @@ impl OctreeNode {
             }
             None => self.entities.remove(&entity),
         }
+    }
+
+    ///Iterating entities that intersects with given bounding box.
+    pub fn intersect(&self, bound: BoundingBox, f: impl Fn(&Entity)) {
+        for entity in self.entities.iter() {
+            if entity.bound.intersects(&bound) {
+                f(&entity.entity);
+            }
+        }
+        match (bound - self.bound.center()).octants() {
+            Some(BVec3 { x, y, z }) => {
+                let i = self.octant_to_index(x, y, z);
+                match self.leaves.get(&i) {
+                    Some(leaf) => {
+                        leaf.intersect(bound, f);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ///Return the bound raycast have hit first.
+    pub fn raycast_hit(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        correction: f32,
+    ) -> Option<(BoundingBox, Vec3)> {
+        match self.raycast(origin, dir) {
+            Some((b, len)) => Some((b, origin + dir * (len - correction))),
+            None => None,
+        }
+    }
+
+    pub fn raycast(&self, origin: Vec3, dir: Vec3) -> Option<(BoundingBox, f32)> {
+        if let Some(_) = self.bound.intersects_ray(origin, dir) {
+            let mut ret = None;
+            for entity in self.entities.iter() {
+                if let Some(len) = entity.bound.intersects_ray(origin, dir) {
+                    ret = match ret {
+                        Some((_, len2)) if len >= len2 => ret,
+                        _ => Some((entity.bound, len)),
+                    }
+                }
+            }
+            for leaf in self.leaves.values() {
+                if let Some((b, len)) = leaf.raycast(origin, dir) {
+                    ret = match ret {
+                        Some((_, len2)) if len >= len2 => ret,
+                        _ => Some((b, len)),
+                    }
+                }
+            }
+            ret
+        } else {
+            None
+        }
+    }
+}
+
+fn place(
+    mut commands: Commands,
+    octree: Query<&OctreeNode>,
+    camera: Query<&Transform, With<Camera>>,
+    state: Res<GlobalState>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    input: Res<Input<MouseButton>>,
+) {
+    if input.just_pressed(MouseButton::Left) {
+        let transform = camera.single();
+        let camera_pos = transform.translation;
+        let camera_forward = transform.forward();
+        let octree = octree.single();
+        let p = match octree.raycast_hit(camera_pos, camera_forward, 0.01) {
+            Some((_, p)) => p,
+            None => match octree.bound.intersects_ray(camera_pos, camera_forward) {
+                Some(len) => camera_pos + camera_forward * (len - 0.01),
+                None => return,
+            },
+        };
+        commands
+            .spawn_bundle(PbrBundle {
+                mesh: meshes.add(Cube::new(1.).into()),
+                material: materials.add(Color::WHITE.into()),
+                transform: Transform::from_translation(p.floor() + Vec3::splat(0.5)),
+                ..default()
+            })
+            .insert(state.mark())
+            .insert(Collides)
+            .insert(BoundingBox::from_size(1.));
     }
 }
