@@ -37,13 +37,8 @@ impl Plugin for InGamePlugin {
             SystemSet::on_update(UpdateStageState::InGame)
                 .with_system(move_camera)
                 .with_system(place)
+                .with_system(replace)
                 .with_system(close_requested),
-        )
-        .add_system_set_to_stage(
-            CoreStage::PostUpdate,
-            SystemSet::on_update(PostUpdateStageState::InGame)
-                .with_system(OctreeNode::removal_system)
-                .with_system(OctreeNode::insertion_system),
         );
     }
 }
@@ -252,7 +247,7 @@ pub struct BoundingBox {
 impl BoundingBox {
     pub fn new(min: Vec3, max: Vec3) -> Self {
         if min.cmpgt(max).any() {
-            panic!("min value of BoundingBox is bigger than max");
+            panic!("min value of BoundingBox is greater than max");
         }
         Self { min, max }
     }
@@ -307,13 +302,13 @@ impl BoundingBox {
 
     ///Determines which octant from origin this box is placed. True is positive, false is negative.
     pub fn octants(&self) -> Option<BVec3> {
-        let x_p = self.min.x > 0. && self.max.x > 0.;
-        let x_n = self.min.x < 0. && self.max.x < 0.;
-        let y_p = self.min.y > 0. && self.max.y > 0.;
-        let y_n = self.min.y < 0. && self.max.y < 0.;
-        let z_p = self.min.z > 0. && self.max.z > 0.;
-        let z_n = self.min.z < 0. && self.max.z < 0.;
-        //+0.0 and -0.0 is not allowed.
+        let x_p = self.min.x >= 0. && self.max.x > 0.;
+        let x_n = self.min.x < 0. && self.max.x <= 0.;
+        let y_p = self.min.y >= 0. && self.max.y > 0.;
+        let y_n = self.min.y < 0. && self.max.y <= 0.;
+        let z_p = self.min.z >= 0. && self.max.z > 0.;
+        let z_n = self.min.z < 0. && self.max.z <= 0.;
+
         if x_p ^ x_n && y_p ^ y_n && z_p ^ z_n {
             Some(BVec3::new(x_p, y_p, z_p))
         } else {
@@ -465,7 +460,9 @@ pub struct OctreeNode {
     ///Entities that a few or doesn't fit with leaves.
     entities: BTreeSet<OctreeEntity>,
     ///Leaf nodes that divides space.
-    leaves: BTreeMap<u32, OctreeNode>,
+    leaves: Option<Box<[OctreeNode; 8]>>,
+    ///Total amounts of entities below.
+    length: usize,
 }
 
 impl OctreeNode {
@@ -477,122 +474,122 @@ impl OctreeNode {
         OctreeNode {
             bound,
             entities: BTreeSet::new(),
-            leaves: BTreeMap::new(),
-        }
-    }
-
-    ///System for applying despawn of entities that collides. Recommended to use this before CoreStage::Last
-    pub fn removal_system(
-        mut octree: Query<&mut OctreeNode>,
-        removals: RemovedComponents<Collides>,
-        query: Query<(&Transform, &BoundingBox)>,
-    ) {
-        let mut octree = octree.single_mut();
-        for entity in removals.iter() {
-            let (transform, bound) = query.get(entity).expect("Ghost entity");
-            octree.remove(entity, *bound + transform.translation);
-        }
-    }
-
-    ///System for applying spawn of entities that collides.
-    ///Recommended to use this before removal_system to prevent fragmentation of memory
-    pub fn insertion_system(
-        mut octree: Query<&mut OctreeNode>,
-        query: Query<(Entity, &Transform, &BoundingBox), Added<Collides>>,
-    ) {
-        let mut octree = octree.single_mut();
-        for (entity, transform, bound) in query.iter() {
-            octree.insert(entity, *bound + transform.translation);
+            leaves: None,
+            length: 0,
         }
     }
 
     pub fn collision_system() {}
 
     ///Quick conversion from octant to leaf index.
-    const fn octant_to_index(&self, x: bool, y: bool, z: bool) -> u32 {
-        const STEP_X: u32 = 4;
-        const STEP_Y: u32 = 2;
-        const STEP_Z: u32 = 1;
-        STEP_X * x as u32 + STEP_Y * y as u32 + STEP_Z * z as u32
+    const fn octant_to_index(x: bool, y: bool, z: bool) -> usize {
+        const STEP_X: usize = 4;
+        const STEP_Y: usize = 2;
+        const STEP_Z: usize = 1;
+        STEP_X * x as usize + STEP_Y * y as usize + STEP_Z * z as usize
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
     }
 
     ///If node and its leaves entirely empty.
     pub fn is_empty(&self) -> bool {
-        self.entities.is_empty() && self.leaves.is_empty()
+        self.length == 0
     }
 
     ///Return is whether entity doesn't already exist.
     pub fn insert(&mut self, entity: Entity, bound: BoundingBox) -> bool {
-        self.insert_inner(OctreeEntity::new(entity, bound))
+        let ret = self.insert_inner(OctreeEntity::new(entity, bound));
+        println!("counts {}", self.len());
+        ret
     }
 
     fn insert_inner(&mut self, entity: OctreeEntity) -> bool {
         //Kinda threshold to prevent frequent division.
-        if self.entities.len() < 4 {
+        let ret = if self.entities.len() < 4 && self.leaves.is_none() {
             self.entities.insert(entity)
-        }
-        //Try relocating entities to leaves.
-        else {
-            let center = self.bound.center();
-            //Temporal container for relocating.
-            let mut to_leaves =
-                Vec::<(OctreeEntity, bool, bool, bool)>::with_capacity(self.entities.len() + 1);
-            //Pure new determined first.
-            let mut ret = match (entity.bound - center).octants() {
-                Some(BVec3 { x, y, z }) => {
-                    to_leaves.push((entity, x, y, z));
-                    true
+        } else {
+            if let None = self.leaves {
+                //Directly insert to prevent recursive split.
+                let ret = self.entities.insert(entity);
+                self.split();
+                ret
+            } else {
+                match self.leaves {
+                    Some(ref mut leaves) => match (entity.bound - self.bound.center()).octants() {
+                        Some(BVec3 { x, y, z }) => {
+                            leaves[Self::octant_to_index(x, y, z)].insert_inner(entity)
+                        }
+                        None => self.entities.insert(entity),
+                    },
+                    _ => false,
                 }
-                None => self.entities.insert(entity),
-            };
-            //Determine existing entities.
-            self.entities
-                .retain(|&entity| match (entity.bound - center).octants() {
-                    Some(BVec3 { x, y, z }) => {
-                        to_leaves.push((entity, x, y, z));
-                        false
-                    }
-                    None => true,
-                });
-            //Force put candidates to leaf.
-            for (entity, x, y, z) in to_leaves {
-                let i = self.octant_to_index(x, y, z);
-                ret &= match self.leaves.get_mut(&i) {
-                    Some(leaf) => leaf.insert_inner(entity),
-                    None => {
-                        let mut new_leaf = Self::from_bound(self.bound.get_octant(x, y, z));
-                        new_leaf.insert_inner(entity);
-                        self.leaves.insert(i, new_leaf);
-                        true
-                    }
-                };
             }
-            ret
+        };
+        if ret {
+            self.length += 1;
         }
+        ret
+    }
+
+    //Split existing entities.
+    fn split(&mut self) {
+        println!("split");
+        let mut new_leaves = [
+            Self::from_bound(self.bound.get_octant(false, false, false)),
+            Self::from_bound(self.bound.get_octant(false, false, true)),
+            Self::from_bound(self.bound.get_octant(false, true, false)),
+            Self::from_bound(self.bound.get_octant(false, true, true)),
+            Self::from_bound(self.bound.get_octant(true, false, false)),
+            Self::from_bound(self.bound.get_octant(true, false, true)),
+            Self::from_bound(self.bound.get_octant(true, true, false)),
+            Self::from_bound(self.bound.get_octant(true, true, true)),
+        ];
+        self.entities.retain(
+            |&entity| match (entity.bound - self.bound.center()).octants() {
+                Some(BVec3 { x, y, z }) => {
+                    let leaf = &mut new_leaves[Self::octant_to_index(x, y, z)];
+                    if leaf.entities.insert(entity) {
+                        leaf.length += 1;
+                    }
+                    false
+                }
+                None => true,
+            },
+        );
+        self.leaves = Some(Box::new(new_leaves));
     }
 
     ///Return is whether existed entity is removed.
     pub fn remove(&mut self, entity: Entity, bound: BoundingBox) -> bool {
-        self.remove_inner(OctreeEntity::new(entity, bound))
+        let ret = self.remove_inner(OctreeEntity::new(entity, bound));
+        println!("counts {}", self.len());
+        ret
     }
 
     fn remove_inner(&mut self, entity: OctreeEntity) -> bool {
-        match (entity.bound - self.bound.center()).octants() {
+        let ret = match (entity.bound - self.bound.center()).octants() {
             Some(BVec3 { x, y, z }) => {
-                let i = self.octant_to_index(x, y, z);
-                match self.leaves.get_mut(&i) {
-                    Some(leaf) => {
-                        let ret = leaf.remove_inner(entity);
-                        if ret && leaf.is_empty() {
-                            self.leaves.remove(&i);
-                        }
-                        ret
+                if let Some(ref mut leaves) = self.leaves {
+                    match leaves[Self::octant_to_index(x, y, z)].remove_inner(entity) {
+                        true => true,
+                        false => self.entities.remove(&entity),
                     }
-                    None => self.entities.remove(&entity),
+                } else {
+                    self.entities.remove(&entity)
                 }
             }
             None => self.entities.remove(&entity),
+        };
+        if ret {
+            self.length -= 1;
+            if self.is_empty() {
+                println!("unsplit");
+                self.leaves = None;
+            }
         }
+        ret
     }
 
     ///Iterating entities that intersects with given bounding box.
@@ -604,47 +601,51 @@ impl OctreeNode {
         }
         match (bound - self.bound.center()).octants() {
             Some(BVec3 { x, y, z }) => {
-                let i = self.octant_to_index(x, y, z);
-                match self.leaves.get(&i) {
-                    Some(leaf) => {
-                        leaf.intersect(bound, f);
-                    }
-                    _ => {}
+                if let Some(ref leaves) = self.leaves {
+                    leaves[Self::octant_to_index(x, y, z)].intersect(bound, f);
                 }
             }
             _ => {}
         }
     }
 
-    ///Return the bound raycast have hit first.
+    ///Return the bound and point raycast have hit first.
     pub fn raycast_hit(
         &self,
         origin: Vec3,
         dir: Vec3,
         correction: f32,
-    ) -> Option<(BoundingBox, Vec3)> {
+    ) -> Option<(Entity, BoundingBox, Vec3)> {
+        //Get hit point by just multiplying len between origin with dir.
         match self.raycast(origin, dir) {
-            Some((b, len)) => Some((b, origin + dir * (len - correction))),
+            Some((e, b, len)) => Some((e, b, origin + dir * (len - correction))),
             None => None,
         }
     }
 
-    pub fn raycast(&self, origin: Vec3, dir: Vec3) -> Option<(BoundingBox, f32)> {
+    ///Return the bound raycast have hit first.
+    pub fn raycast(&self, origin: Vec3, dir: Vec3) -> Option<(Entity, BoundingBox, f32)> {
+        //At least, ray should intersect nodes' bound
         if let Some(_) = self.bound.intersects_ray(origin, dir) {
             let mut ret = None;
+            //Checking all containing entities.
             for entity in self.entities.iter() {
                 if let Some(len) = entity.bound.intersects_ray(origin, dir) {
+                    //result should be the shortest one.
                     ret = match ret {
-                        Some((_, len2)) if len >= len2 => ret,
-                        _ => Some((entity.bound, len)),
+                        Some((_, _, len2)) if len >= len2 => ret,
+                        _ => Some((entity.entity, entity.bound, len)),
                     }
                 }
             }
-            for leaf in self.leaves.values() {
-                if let Some((b, len)) = leaf.raycast(origin, dir) {
-                    ret = match ret {
-                        Some((_, len2)) if len >= len2 => ret,
-                        _ => Some((b, len)),
+            //Also under leaves.
+            if let Some(ref leaves) = self.leaves {
+                for leaf in leaves.iter() {
+                    if let Some((e, b, len)) = leaf.raycast(origin, dir) {
+                        ret = match ret {
+                            Some((_, _, len2)) if len >= len2 => ret,
+                            _ => Some((e, b, len)),
+                        }
                     }
                 }
             }
@@ -655,36 +656,71 @@ impl OctreeNode {
     }
 }
 
+///Places cube where camera looking at. Temporary.
 fn place(
     mut commands: Commands,
-    octree: Query<&OctreeNode>,
+    mut octree: Query<&mut OctreeNode>,
     camera: Query<&Transform, With<Camera>>,
     state: Res<GlobalState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     input: Res<Input<MouseButton>>,
 ) {
+    //Checks only when left click.
     if input.just_pressed(MouseButton::Left) {
         let transform = camera.single();
         let camera_pos = transform.translation;
         let camera_forward = transform.forward();
-        let octree = octree.single();
-        let p = match octree.raycast_hit(camera_pos, camera_forward, 0.01) {
-            Some((_, p)) => p,
-            None => match octree.bound.intersects_ray(camera_pos, camera_forward) {
+        let octree_ref = octree.single();
+        //Get raycast hit point.
+        let p = match octree_ref.raycast_hit(camera_pos, camera_forward, 0.01) {
+            Some((_, _, p)) => p,
+            //If no result, checks root of tree's bound.
+            None => match octree_ref.bound.intersects_ray(camera_pos, camera_forward) {
                 Some(len) => camera_pos + camera_forward * (len - 0.01),
                 None => return,
             },
-        };
-        commands
+        }
+        .floor()
+            + Vec3::splat(0.5);
+        let b = BoundingBox::from_size(1.);
+        //If there's a result, spawn a cube.
+        let entity = commands
             .spawn_bundle(PbrBundle {
                 mesh: meshes.add(Cube::new(1.).into()),
                 material: materials.add(Color::WHITE.into()),
-                transform: Transform::from_translation(p.floor() + Vec3::splat(0.5)),
+                transform: Transform::from_translation(p),
                 ..default()
             })
             .insert(state.mark())
             .insert(Collides)
-            .insert(BoundingBox::from_size(1.));
+            .insert(b)
+            .id();
+        octree.single_mut().insert(entity, b + p);
+    }
+}
+
+///Replaces cube where camera looking at. Temporary.
+fn replace(
+    mut commands: Commands,
+    mut octree: Query<&mut OctreeNode>,
+    camera: Query<&Transform, With<Camera>>,
+    input: Res<Input<MouseButton>>,
+) {
+    //Checks only when right click.
+    if input.just_pressed(MouseButton::Right) {
+        let transform = camera.single();
+        //Get raycast hit point.
+        let (e, b) = match octree
+            .single()
+            .raycast(transform.translation, transform.forward())
+        {
+            Some((e, b, _)) => (e, b),
+            //If no result skip.
+            None => return,
+        };
+        //If there's a result, despawn a cube.
+        octree.single_mut().remove(e, b);
+        commands.entity(e).despawn_recursive();
     }
 }
