@@ -2,7 +2,7 @@ use crate::{consts::*, states::*, ui::*, Textures};
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     f32::consts::PI,
     ops::{Add, Deref, Sub},
 };
@@ -132,7 +132,7 @@ fn setup(
             ..default()
         })
         .insert(state.mark());
-    //z axis line
+    // z axis line
     commands
         .spawn_bundle(PolylineBundle {
             polyline: polylines.add(Polyline {
