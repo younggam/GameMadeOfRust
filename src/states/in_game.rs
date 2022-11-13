@@ -7,10 +7,12 @@ use std::{
     ops::{Add, Deref, Sub},
 };
 
-use bevy::prelude::shape::Cube;
 use bevy::{
     input::mouse::MouseMotion,
-    prelude::{shape::Plane, *},
+    prelude::{
+        shape::{Cube, Plane},
+        *,
+    },
 };
 
 use bevy_polyline::prelude::*;
@@ -26,7 +28,9 @@ impl Plugin for InGamePlugin {
         )
         .add_system_set_to_stage(
             CoreStage::PreUpdate,
-            SystemSet::on_update(PreUpdateStageState::InGame).with_system(grab_cursor),
+            SystemSet::on_update(PreUpdateStageState::InGame)
+                .with_system(grab_cursor)
+                .with_system(camera_look_at),
         )
         .add_system_set_to_stage(
             CoreStage::PreUpdate,
@@ -60,7 +64,8 @@ fn setup(
             transform: Transform::from_xyz(-4.0, 10.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
-        .insert(state.mark());
+        .insert(state.mark())
+        .insert(LookAt(None));
     //crosshair
     let window = windows.primary();
     commands
@@ -656,11 +661,34 @@ impl OctreeNode {
     }
 }
 
+#[derive(Component)]
+pub struct LookAt(Option<(Option<(Entity, BoundingBox)>, Vec3)>);
+
+///Prepare and store data about where camera looking at.
+fn camera_look_at(
+    mut camera: Query<(&Transform, &mut LookAt), With<Camera>>,
+    octree: Query<&OctreeNode>,
+) {
+    let (transform, mut look_at) = camera.single_mut();
+    let camera_pos = transform.translation;
+    let camera_forward = transform.forward();
+    let octree = octree.single();
+    //Get raycast hit point.
+    look_at.0 = match octree.raycast_hit(camera_pos, camera_forward, 0.01) {
+        Some((e, b, p)) => Some((Some((e, b)), p.floor())),
+        //If no result, checks root of tree's bound.
+        None => match octree.bound.intersects_ray(camera_pos, camera_forward) {
+            Some(len) => Some((None, (camera_pos + camera_forward * (len - 0.01).floor()))),
+            None => None,
+        },
+    };
+}
+
 ///Places cube where camera looking at. Temporary.
 fn place(
     mut commands: Commands,
     mut octree: Query<&mut OctreeNode>,
-    camera: Query<&Transform, With<Camera>>,
+    camera: Query<&LookAt, With<Camera>>,
     state: Res<GlobalState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -668,35 +696,23 @@ fn place(
 ) {
     //Checks only when left click.
     if input.just_pressed(MouseButton::Left) {
-        let transform = camera.single();
-        let camera_pos = transform.translation;
-        let camera_forward = transform.forward();
-        let octree_ref = octree.single();
-        //Get raycast hit point.
-        let p = match octree_ref.raycast_hit(camera_pos, camera_forward, 0.01) {
-            Some((_, _, p)) => p,
-            //If no result, checks root of tree's bound.
-            None => match octree_ref.bound.intersects_ray(camera_pos, camera_forward) {
-                Some(len) => camera_pos + camera_forward * (len - 0.01),
-                None => return,
-            },
+        if let Some((_, mut p)) = camera.single().0 {
+            p += Vec3::splat(0.5);
+            let b = BoundingBox::from_size(1.);
+            //If there's a result, spawn a cube.
+            let entity = commands
+                .spawn_bundle(PbrBundle {
+                    mesh: meshes.add(Cube::new(1.).into()),
+                    material: materials.add(Color::WHITE.into()),
+                    transform: Transform::from_translation(p),
+                    ..default()
+                })
+                .insert(state.mark())
+                .insert(Collides)
+                .insert(b)
+                .id();
+            octree.single_mut().insert(entity, b + p);
         }
-        .floor()
-            + Vec3::splat(0.5);
-        let b = BoundingBox::from_size(1.);
-        //If there's a result, spawn a cube.
-        let entity = commands
-            .spawn_bundle(PbrBundle {
-                mesh: meshes.add(Cube::new(1.).into()),
-                material: materials.add(Color::WHITE.into()),
-                transform: Transform::from_translation(p),
-                ..default()
-            })
-            .insert(state.mark())
-            .insert(Collides)
-            .insert(b)
-            .id();
-        octree.single_mut().insert(entity, b + p);
     }
 }
 
@@ -704,23 +720,15 @@ fn place(
 fn replace(
     mut commands: Commands,
     mut octree: Query<&mut OctreeNode>,
-    camera: Query<&Transform, With<Camera>>,
+    camera: Query<&LookAt, With<Camera>>,
     input: Res<Input<MouseButton>>,
 ) {
     //Checks only when right click.
     if input.just_pressed(MouseButton::Right) {
-        let transform = camera.single();
-        //Get raycast hit point.
-        let (e, b) = match octree
-            .single()
-            .raycast(transform.translation, transform.forward())
-        {
-            Some((e, b, _)) => (e, b),
-            //If no result skip.
-            None => return,
-        };
-        //If there's a result, despawn a cube.
-        octree.single_mut().remove(e, b);
-        commands.entity(e).despawn_recursive();
+        if let Some((Some((e, b)), _)) = camera.single().0 {
+            //If there's a result, despawn a cube.
+            octree.single_mut().remove(e, b);
+            commands.entity(e).despawn_recursive();
+        }
     }
 }
