@@ -1,6 +1,7 @@
 pub(crate) mod consts;
 pub(crate) mod func;
 pub(crate) mod macros;
+pub(crate) mod physics;
 pub(crate) mod states;
 pub(crate) mod ui;
 
