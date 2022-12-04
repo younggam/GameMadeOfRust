@@ -8,6 +8,7 @@ use crate::{
 
 use std::f32::consts::PI;
 
+use bevy::window::CursorGrabMode;
 use bevy::{
     input::mouse::MouseMotion,
     prelude::{
@@ -61,17 +62,18 @@ fn setup(
     windows: Res<Windows>,
 ) {
     //camera
-    commands
-        .spawn_bundle(Camera3dBundle {
+    commands.spawn((
+        Camera3dBundle {
             transform: Transform::from_xyz(-4.0, 10.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
-        })
-        .insert(state.mark())
-        .insert(LookAt(None));
+        },
+        state.mark(),
+        LookAt(None),
+    ));
     //crosshair
     let window = windows.primary();
-    commands
-        .spawn_bundle(ImageBundle {
+    commands.spawn((
+        ImageBundle {
             image: textures[UI][UI_CROSSHAIR].clone().into(),
             style: Style {
                 size: Size::new(Val::Px(32.), Val::Px(32.)),
@@ -85,11 +87,12 @@ fn setup(
                 ..default()
             },
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     //directional light
-    commands
-        .spawn_bundle(DirectionalLightBundle {
+    commands.spawn((
+        DirectionalLightBundle {
             directional_light: DirectionalLight {
                 illuminance: 32000.0,
                 ..default()
@@ -99,19 +102,21 @@ fn setup(
                 ..default()
             },
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     //plane
-    commands
-        .spawn_bundle(PbrBundle {
+    commands.spawn((
+        PbrBundle {
             mesh: meshes.add(Plane { size: 100.0 }.into()),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     //x axis line
-    commands
-        .spawn_bundle(PolylineBundle {
+    commands.spawn((
+        PolylineBundle {
             polyline: polylines.add(Polyline {
                 vertices: vec![Vec3::ZERO, Vec3::X * 100.],
                 ..default()
@@ -122,11 +127,12 @@ fn setup(
                 ..default()
             }),
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     //y axis line
-    commands
-        .spawn_bundle(PolylineBundle {
+    commands.spawn((
+        PolylineBundle {
             polyline: polylines.add(Polyline {
                 vertices: vec![Vec3::ZERO, Vec3::Y * 100.],
                 ..default()
@@ -137,11 +143,12 @@ fn setup(
                 ..default()
             }),
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     // z axis line
-    commands
-        .spawn_bundle(PolylineBundle {
+    commands.spawn((
+        PolylineBundle {
             polyline: polylines.add(Polyline {
                 vertices: vec![Vec3::ZERO, Vec3::Z * 100.],
                 ..default()
@@ -152,13 +159,11 @@ fn setup(
                 ..default()
             }),
             ..default()
-        })
-        .insert(state.mark());
+        },
+        state.mark(),
+    ));
     //Octree
-    commands
-        .spawn()
-        .insert(OctreeNode::new(64., Vec3::new(0., 32., 0.)))
-        .insert(state.mark());
+    commands.spawn((OctreeNode::new(64., Vec3::new(0., 32., 0.)), state.mark()));
 }
 
 ///locks cursor to window while in game.
@@ -168,13 +173,13 @@ fn grab_cursor(mut windows: ResMut<Windows>) {
     if window.is_focused() {
         //if window is focused and cursor is visible, lock.
         if cursor_visible {
-            window.set_cursor_lock_mode(true);
+            window.set_cursor_grab_mode(CursorGrabMode::Locked);
             window.set_cursor_visibility(false);
         }
     }
     //if window isn't focused and cursor is invisible, release.
     else if !cursor_visible {
-        window.set_cursor_lock_mode(false);
+        window.set_cursor_grab_mode(CursorGrabMode::None);
         window.set_cursor_visibility(true);
     }
 }
@@ -182,7 +187,7 @@ fn grab_cursor(mut windows: ResMut<Windows>) {
 ///Release cursor when about to exit.
 fn show_cursor(mut windows: ResMut<Windows>) {
     let window = windows.primary_mut();
-    window.set_cursor_lock_mode(false);
+    window.set_cursor_grab_mode(CursorGrabMode::None);
     window.set_cursor_visibility(true);
 }
 
@@ -283,15 +288,17 @@ fn place(
             let b = BoundingBox::from_size(1.);
             //If there's a result, spawn a cube.
             let entity = commands
-                .spawn_bundle(PbrBundle {
-                    mesh: meshes.add(Cube::new(1.).into()),
-                    material: materials.add(Color::WHITE.into()),
-                    transform: Transform::from_translation(p),
-                    ..default()
-                })
-                .insert(state.mark())
-                .insert(Collides)
-                .insert(b)
+                .spawn((
+                    PbrBundle {
+                        mesh: meshes.add(Cube::new(1.).into()),
+                        material: materials.add(Color::WHITE.into()),
+                        transform: Transform::from_translation(p),
+                        ..default()
+                    },
+                    state.mark(),
+                    Collides,
+                    b,
+                ))
                 .id();
             octree.single_mut().insert(entity, b + p);
         }

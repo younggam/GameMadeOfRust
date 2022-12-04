@@ -151,6 +151,7 @@ mod global {
     }
 
     ///A unique global state metadata.
+    #[derive(Resource)]
     pub struct GlobalState {
         app_state: AppState,
         hierarchy: Hierarchy,
@@ -275,13 +276,9 @@ pub struct StatesPlugin;
 
 impl Plugin for StatesPlugin {
     fn build(&self, app: &mut App) {
-        let manage_state_system_state = ManageStateSystemState::new(&mut app.world);
-        let clear_state_system_state = ClearStateSystemState::new(&mut app.world);
-        app.insert_resource(manage_state_system_state)
-            .insert_resource(clear_state_system_state)
-            .insert_resource(GlobalState::new(AppState::MainMenu))
+        app.insert_resource(GlobalState::new(AppState::MainMenu))
             //First
-            .add_system_to_stage(CoreStage::First, manage_state.exclusive_system().at_start())
+            .add_system_to_stage(CoreStage::First, manage_state.at_start())
             .add_state_to_stage(CoreStage::First, FirstStageState::MainMenu)
             //PreUpdate
             .add_state_to_stage(CoreStage::PreUpdate, PreUpdateStageState::MainMenu)
@@ -317,88 +314,91 @@ type ManageStateSystemState<'w> = SystemState<(
 )>;
 
 ///Exclusive system that propagates state change.
-fn manage_state(world: &mut World) {
-    world.resource_scope(|world, mut cached_state: Mut<ManageStateSystemState>| {
-        let (mut app_state, mut first, mut pre_update, mut update, mut post_update, mut last) =
-            cached_state.get_mut(world);
-        //When global state is changed.
-        if app_state.should_change() {
-            app_state.propagate_change(|state, is_exit, change_way| {
-                //About to exit state.
-                if is_exit {
-                    match change_way {
-                        StateChangeWay::Push => {
-                            first.push(FirstStageState::AppExit).unwrap();
-                            pre_update.push(PreUpdateStageState::AppExit).unwrap();
-                            update.push(UpdateStageState::AppExit).unwrap();
-                            post_update.push(PostUpdateStageState::AppExit).unwrap();
-                            last.push(LastStageState::AppExit).unwrap();
-                        }
-                        _ => unreachable_release!("State is interrupted"),
-                    }
-                }
-                //General state shifting.
-                else {
-                    match change_way {
-                        //Replace major to major.
-                        StateChangeWay::Replace => match *state {
-                            AppState::MainMenu => {
-                                first.replace(FirstStageState::MainMenu).unwrap();
-                                pre_update.replace(PreUpdateStageState::MainMenu).unwrap();
-                                update.replace(UpdateStageState::MainMenu).unwrap();
-                                post_update.replace(PostUpdateStageState::MainMenu).unwrap();
-                                last.replace(LastStageState::MainMenu).unwrap();
-                            }
-                            AppState::InGame => {
-                                first.replace(FirstStageState::InGame).unwrap();
-                                pre_update.replace(PreUpdateStageState::InGame).unwrap();
-                                update.replace(UpdateStageState::InGame).unwrap();
-                                post_update.replace(PostUpdateStageState::InGame).unwrap();
-                                last.replace(LastStageState::InGame).unwrap();
-                            }
-                        },
-                        //Push minor state.
-                        // StateChangeWay::Push => match *state {
-                        //     AppState::MainMenu(Some(m)) => {
-                        //         first.push(FirstStageState::MainMenu(Some(m))).unwrap();
-                        //         pre_update
-                        //             .push(PreUpdateStageState::MainMenu(Some(m)))
-                        //             .unwrap();
-                        //         update.push(UpdateStageState::MainMenu(Some(m))).unwrap();
-                        //         post_update
-                        //             .push(PostUpdateStageState::MainMenu(Some(m)))
-                        //             .unwrap();
-                        //         last.push(LastStageState::MainMenu(Some(m))).unwrap();
-                        //     }
-                        //     AppState::InGame(Some(i)) => {
-                        //         first.push(FirstStageState::InGame(Some(i))).unwrap();
-                        //         pre_update
-                        //             .push(PreUpdateStageState::InGame(Some(i)))
-                        //             .unwrap();
-                        //         update.push(UpdateStageState::InGame(Some(i))).unwrap();
-                        //         post_update
-                        //             .push(PostUpdateStageState::InGame(Some(i)))
-                        //             .unwrap();
-                        //         last.push(LastStageState::InGame(Some(i))).unwrap();
-                        //     }
-                        //     _ => unreachable_release!("State is interrupted"),
-                        // },
-                        //Pop minor or exit state.
-                        StateChangeWay::Pop => {
-                            first.pop().unwrap();
-                            pre_update.pop().unwrap();
-                            update.pop().unwrap();
-                            post_update.pop().unwrap();
-                            last.pop().unwrap();
-                        }
-                        _ => unreachable_release!("State is interrupted"),
-                    };
-                }
-            });
+fn manage_state(
+    world: &mut World,
+    system_state: &mut ManageStateSystemState,
+    clear_system_state: &mut ClearStateSystemState,
+) {
+    let (mut app_state, mut first, mut pre_update, mut update, mut post_update, mut last) =
+        system_state.get_mut(world);
 
-            clear_state(world);
-        }
-    });
+    //When global state is changed.
+    if app_state.should_change() {
+        app_state.propagate_change(|state, is_exit, change_way| {
+            //About to exit state.
+            if is_exit {
+                match change_way {
+                    StateChangeWay::Push => {
+                        first.push(FirstStageState::AppExit).unwrap();
+                        pre_update.push(PreUpdateStageState::AppExit).unwrap();
+                        update.push(UpdateStageState::AppExit).unwrap();
+                        post_update.push(PostUpdateStageState::AppExit).unwrap();
+                        last.push(LastStageState::AppExit).unwrap();
+                    }
+                    _ => unreachable_release!("State is interrupted"),
+                }
+            }
+            //General state shifting.
+            else {
+                match change_way {
+                    //Replace major to major.
+                    StateChangeWay::Replace => match *state {
+                        AppState::MainMenu => {
+                            first.replace(FirstStageState::MainMenu).unwrap();
+                            pre_update.replace(PreUpdateStageState::MainMenu).unwrap();
+                            update.replace(UpdateStageState::MainMenu).unwrap();
+                            post_update.replace(PostUpdateStageState::MainMenu).unwrap();
+                            last.replace(LastStageState::MainMenu).unwrap();
+                        }
+                        AppState::InGame => {
+                            first.replace(FirstStageState::InGame).unwrap();
+                            pre_update.replace(PreUpdateStageState::InGame).unwrap();
+                            update.replace(UpdateStageState::InGame).unwrap();
+                            post_update.replace(PostUpdateStageState::InGame).unwrap();
+                            last.replace(LastStageState::InGame).unwrap();
+                        }
+                    },
+                    //Push minor state.
+                    // StateChangeWay::Push => match *state {
+                    //     AppState::MainMenu(Some(m)) => {
+                    //         first.push(FirstStageState::MainMenu(Some(m))).unwrap();
+                    //         pre_update
+                    //             .push(PreUpdateStageState::MainMenu(Some(m)))
+                    //             .unwrap();
+                    //         update.push(UpdateStageState::MainMenu(Some(m))).unwrap();
+                    //         post_update
+                    //             .push(PostUpdateStageState::MainMenu(Some(m)))
+                    //             .unwrap();
+                    //         last.push(LastStageState::MainMenu(Some(m))).unwrap();
+                    //     }
+                    //     AppState::InGame(Some(i)) => {
+                    //         first.push(FirstStageState::InGame(Some(i))).unwrap();
+                    //         pre_update
+                    //             .push(PreUpdateStageState::InGame(Some(i)))
+                    //             .unwrap();
+                    //         update.push(UpdateStageState::InGame(Some(i))).unwrap();
+                    //         post_update
+                    //             .push(PostUpdateStageState::InGame(Some(i)))
+                    //             .unwrap();
+                    //         last.push(LastStageState::InGame(Some(i))).unwrap();
+                    //     }
+                    //     _ => unreachable_release!("State is interrupted"),
+                    // },
+                    //Pop minor or exit state.
+                    StateChangeWay::Pop => {
+                        first.pop().unwrap();
+                        pre_update.pop().unwrap();
+                        update.pop().unwrap();
+                        post_update.pop().unwrap();
+                        last.pop().unwrap();
+                    }
+                    _ => unreachable_release!("State is interrupted"),
+                };
+            }
+        });
+
+        clear_state(world, clear_system_state);
+    };
 }
 
 type ClearStateSystemState<'w, 's> = SystemState<(
@@ -408,17 +408,15 @@ type ClearStateSystemState<'w, 's> = SystemState<(
 )>;
 
 ///Clears remaining entities that doesn't fit with state.
-fn clear_state(world: &mut World) {
-    world.resource_scope(|world, mut cached_state: Mut<ClearStateSystemState>| {
-        let (mut commands, mut despawn_entities_query, app_state) = cached_state.get_mut(world);
-        let app_state = app_state.into_inner();
-        for (entity, state_mark) in despawn_entities_query.iter_mut() {
-            if app_state.should_clear(state_mark) {
-                //Also despawn childs.
-                commands.entity(entity).despawn_recursive();
-            }
+fn clear_state(world: &mut World, system_state: &mut ClearStateSystemState) {
+    let (mut commands, mut despawn_entities_query, app_state) = system_state.get_mut(world);
+    let app_state = app_state.into_inner();
+    for (entity, state_mark) in despawn_entities_query.iter_mut() {
+        if app_state.should_clear(state_mark) {
+            //Also despawn childs.
+            commands.entity(entity).despawn_recursive();
         }
-        //Applying commands to world immediately.
-        cached_state.apply(world);
-    });
+    }
+    //Applying commands to world immediately.
+    system_state.apply(world);
 }

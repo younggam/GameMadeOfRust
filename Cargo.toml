@@ -11,10 +11,10 @@ members = ["macros"]
 
 [dependencies]
 macros = { path = "macros" }
-bevy_polyline = "0.3"
+bevy_polyline = "0.4"
 
 [dependencies.bevy]
-version = "0.8"
+version = "0.9"
 
 [features]
 default = ["dev"]

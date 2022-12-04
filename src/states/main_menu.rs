@@ -23,30 +23,30 @@ impl Plugin for MainMenuPlugin {
 ///Setup system in Main menu.
 fn setup(mut commands: Commands, state: Res<GlobalState>, res: Res<Fonts>) {
     //ui camera
-    commands
-        .spawn_bundle(Camera2dBundle::default())
-        .insert(state.mark());
+    commands.spawn((Camera2dBundle::default(), state.mark()));
     //play button
     commands
-        .spawn_bundle(create_button())
-        .insert(state.mark())
-        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.replace(AppState::InGame),
+        .spawn((
+            create_button(),
+            state.mark(),
+            Action::<for<'a> fn(&'a mut GlobalState)>::new(|g: &mut GlobalState| {
+                g.replace(AppState::InGame)
+            }),
+            HierarchyMark::<0>,
         ))
-        .insert(HierarchyMark::<0>)
         .with_children(|parent| {
-            parent.spawn_bundle(create_text(PLAY_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
+            parent.spawn(create_text(PLAY_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
         });
     //exit button
     commands
-        .spawn_bundle(create_button())
-        .insert(state.mark())
-        .insert(Action::<for<'a> fn(&'a mut GlobalState)>::new(
-            |g: &mut GlobalState| g.push_exit(),
+        .spawn((
+            create_button(),
+            state.mark(),
+            Action::<for<'a> fn(&'a mut GlobalState)>::new(|g: &mut GlobalState| g.push_exit()),
+            HierarchyMark::<0>,
         ))
-        .insert(HierarchyMark::<0>)
         .with_children(|parent| {
-            parent.spawn_bundle(create_text(EXIT_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
+            parent.spawn(create_text(EXIT_TEXT, &res, 30.0, TEXT_COLOR_BRIGHT));
         });
 }
 
@@ -55,7 +55,7 @@ fn button(
     mut interaction_query: Query<
         (
             &Interaction,
-            &mut UiColor,
+            &mut BackgroundColor,
             &Action<for<'a> fn(&'a mut GlobalState)>,
             &HierarchyMark<0>,
         ),
