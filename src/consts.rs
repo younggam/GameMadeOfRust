@@ -1,10 +1,3 @@
 //math
 pub const RADIANS: f32 = std::f32::consts::PI / 180.0;
 pub const GIMBAL_LOCK: f32 = 89.0 * RADIANS;
-
-//fonts
-pub const FONT_SCHLUBER: &str = "Schluber.otf";
-
-//images
-pub const UI: usize = 0;
-pub const UI_CROSSHAIR: &str = "Crosshair.png";

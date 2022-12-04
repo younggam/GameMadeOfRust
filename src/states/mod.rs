@@ -1,7 +1,10 @@
 pub mod in_game;
 pub mod main_menu;
 
-use crate::unreachable_release;
+use crate::{
+    ui::{exit_close_requested, exit_esc, exit_no_button, exit_yes_button, setup_exit},
+    unreachable_release,
+};
 
 use bevy::{ecs::system::SystemState, prelude::*};
 
@@ -268,7 +271,6 @@ mod global {
     #[derive(Component)]
     pub struct StateMark(AppState, Hierarchy);
 }
-use crate::ui::{exit_close_requested, exit_esc, exit_no_button, exit_yes_button, setup_exit};
 pub use global::*;
 
 ///Batch setup of state managing.

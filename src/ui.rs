@@ -1,4 +1,8 @@
-use crate::{consts::FONT_SCHLUBER, func::Action, states::*, Fonts};
+use crate::{
+    asset::{Fonts, FONT_SCHLUBER},
+    func::Action,
+    states::*,
+};
 
 use bevy::{app::AppExit, input::Input, prelude::*, window::WindowCloseRequested};
 
@@ -8,11 +12,13 @@ pub const ARE_YOU_SURE_TEXT: &str = "Are you sure?";
 pub const YES_TEXT: &str = "Yes";
 pub const NO_TEXT: &str = "No";
 
+pub const UI_BACKGROUND_COLOR: BackgroundColor = BackgroundColor(Color::WHITE);
+
 pub const TEXT_COLOR_BRIGHT: Color = Color::YELLOW;
 pub const TEXT_COLOR_DARK: Color = Color::BLACK;
 
-pub const BUTTON_COLOR_NONE: Color = Color::BLACK;
-pub const BUTTON_COLOR_HOVER: Color = Color::GRAY;
+pub const BUTTON_COLOR_NONE: BackgroundColor = BackgroundColor(Color::BLACK);
+pub const BUTTON_COLOR_HOVER: BackgroundColor = BackgroundColor(Color::GRAY);
 
 ///Mark hierarchy info of ui
 #[derive(Component)]
@@ -67,10 +73,10 @@ pub fn exit_no_button(
         match *interaction {
             Interaction::Clicked => func.run(&mut *state),
             Interaction::Hovered => {
-                *color = BUTTON_COLOR_HOVER.into();
+                *color = BUTTON_COLOR_HOVER;
             }
             Interaction::None => {
-                *color = BUTTON_COLOR_NONE.into();
+                *color = BUTTON_COLOR_NONE;
             }
         }
     }
@@ -93,10 +99,10 @@ pub fn exit_yes_button(
         match *interaction {
             Interaction::Clicked => func.run(&mut event),
             Interaction::Hovered => {
-                *color = BUTTON_COLOR_HOVER.into();
+                *color = BUTTON_COLOR_HOVER;
             }
             Interaction::None => {
-                *color = BUTTON_COLOR_NONE.into();
+                *color = BUTTON_COLOR_NONE;
             }
         }
     }
@@ -115,7 +121,7 @@ pub fn create_button() -> ButtonBundle {
             align_items: AlignItems::Center,
             ..default()
         },
-        background_color: BUTTON_COLOR_NONE.into(),
+        background_color: BUTTON_COLOR_NONE,
         ..default()
     }
 }
@@ -161,12 +167,13 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
                         Val::Percent(62.0),
                         Val::Percent(38.0),
                     ),
-                    flex_wrap: FlexWrap::WrapReverse,
+                    flex_wrap: FlexWrap::Wrap,
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
                     align_content: AlignContent::SpaceAround,
                     ..default()
                 },
+                background_color: UI_BACKGROUND_COLOR,
                 ..default()
             },
             state.mark(),

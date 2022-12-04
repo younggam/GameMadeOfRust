@@ -1,8 +1,13 @@
-use crate::consts::{FONT_SCHLUBER, UI, UI_CROSSHAIR};
-
 use std::ops::{Deref, DerefMut};
 
 use bevy::{prelude::*, utils::hashbrown::HashMap};
+
+//fonts
+pub const FONT_SCHLUBER: &str = "Schluber.otf";
+
+//images
+pub const UI: usize = 0;
+pub const UI_CROSSHAIR: &str = "Crosshair.png";
 
 ///Font handle access by str.
 #[derive(Resource, Default)]

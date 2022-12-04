@@ -1,4 +1,4 @@
-use crate::{func::*, states::*, ui::*, Fonts};
+use crate::{asset::Fonts, func::*, states::*, ui::*};
 
 use bevy::prelude::*;
 
