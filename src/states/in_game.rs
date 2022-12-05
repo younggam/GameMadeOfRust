@@ -257,14 +257,14 @@ fn camera_look_at(
     let camera_forward = transform.forward();
     let octree = octree.single();
     //Get raycast hit point.
-    look_at.0 = match octree.raycast_hit(Ray::new(camera_pos, camera_forward), 0.01) {
+    look_at.0 = match octree.raycast_hit(Ray::new(camera_pos, camera_forward), 0.001) {
         Some((e, b, p)) => Some((Some((e, b)), p.floor())),
         //If no result, checks root of tree's bound.
         None => match octree
             .bound
             .intersects_ray(Ray::new(camera_pos, camera_forward))
         {
-            Some(len) => Some((None, (camera_pos + camera_forward * (len - 0.01)).floor())),
+            Some(len) => Some((None, (camera_pos + camera_forward * (len - 0.001)).floor())),
             None => None,
         },
     };

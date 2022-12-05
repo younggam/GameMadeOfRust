@@ -74,7 +74,7 @@ impl BoundingBox {
     }
 
     ///Determines which octant from origin this box is placed. True is positive, false is negative.
-    pub fn octants(&self) -> Option<BVec3> {
+    pub fn octant(&self) -> Option<BVec3> {
         let x_p = self.min.x >= 0. && self.max.x > 0.;
         let x_n = self.min.x < 0. && self.max.x <= 0.;
         let y_p = self.min.y >= 0. && self.max.y > 0.;
@@ -112,6 +112,38 @@ impl BoundingBox {
         )
     }
 
+    ///Check where point is lying on in coordinate system that origin is center of bound.
+    /// - 1 if the element is positive.
+    /// - -1 if the element is negative.
+    /// - 0 if the element cannot be distinguished with 0.
+    pub fn is_on_octant(&self, point: Vec3) -> IVec3 {
+        let center = self.center();
+
+        IVec3::new(
+            if (point.x - center.x).abs() <= f32::EPSILON {
+                0
+            } else if point.x < center.x {
+                -1
+            } else {
+                1
+            },
+            if (point.y - center.y).abs() <= f32::EPSILON {
+                0
+            } else if point.y < center.y {
+                -1
+            } else {
+                1
+            },
+            if (point.z - center.z).abs() <= f32::EPSILON {
+                0
+            } else if point.z < center.z {
+                -1
+            } else {
+                1
+            },
+        )
+    }
+
     ///Checks whether this and other bounding box intersected.
     pub fn intersects(&self, other: &Self) -> bool {
         self.min.cmplt(other.max).all() && self.max.cmpgt(other.min).all()
@@ -124,6 +156,12 @@ impl BoundingBox {
 
     ///Checks if ray is penetrating box.
     pub fn intersects_ray(&self, ray: Ray) -> Option<f32> {
+        self.intersects_ray_raw(ray)
+            .map(|(t_min, t_max)| if t_min <= 0. { t_max } else { t_min })
+    }
+
+    ///Checks if ray is penetrating box and returns raw data for two location on bound that ray passes.
+    pub fn intersects_ray_raw(&self, ray: Ray) -> Option<(f32, f32)> {
         let mut t_min = f32::NEG_INFINITY;
         let mut t_max = f32::INFINITY;
 
@@ -137,10 +175,8 @@ impl BoundingBox {
 
         if t_max <= 0. || t_min >= t_max {
             None
-        } else if t_min < 0. {
-            Some(t_max)
         } else {
-            Some(t_min)
+            Some((t_min, t_max))
         }
     }
 }
@@ -204,6 +240,83 @@ impl Ray {
             dir,
             recip_dir: dir.recip(),
         }
+    }
+
+    ///Extract octant from ray's initial traverse at certain spot.
+    /// - None if ray is included on axis and base planes.
+    pub fn octant_at(&self, pivot: f32, bound: BoundingBox) -> Option<BVec3> {
+        let mut octant = bound.is_on_octant(self.origin + self.dir * pivot);
+        if octant.x == 0 && self.dir.x != 0. {
+            if self.dir.x > 0. {
+                octant.x = 1
+            } else if self.dir.x < 0. {
+                octant.x = -1
+            }
+        }
+        if octant.y == 0 && self.dir.y != 0. {
+            if self.dir.y > 0. {
+                octant.y = 1
+            } else if self.dir.y < 0. {
+                octant.y = -1
+            }
+        }
+        if octant.z == 0 && self.dir.z != 0. {
+            if self.dir.z > 0. {
+                octant.z = 1
+            } else if self.dir.z < 0. {
+                octant.z = -1
+            }
+        }
+        if octant.cmpeq(IVec3::ZERO).any() {
+            None
+        } else {
+            Some(octant.cmpgt(IVec3::ZERO))
+        }
+    }
+
+    ///Get next octant from point, where ray is touching on previous octant.
+    ///Ray pivot should lie on previous octant's surface for accurate result.
+    pub fn next_octant(&self, mut octant: BVec3, pivot: f32, bound: BoundingBox) -> BVec3 {
+        let check = self.origin + pivot * self.dir
+            - bound.get_octant(octant.x, octant.y, octant.z).center();
+        let check_abs = check.abs();
+        let delta = if check_abs.x > check_abs.y {
+            if check_abs.x > check_abs.z {
+                BVec3::new(true, false, false)
+            } else if check_abs.z > check_abs.x {
+                BVec3::new(false, false, true)
+            } else {
+                BVec3::new(true, false, true)
+            }
+        } else if check_abs.y > check_abs.x {
+            if check_abs.y > check_abs.z {
+                BVec3::new(false, true, false)
+            } else if check_abs.z > check_abs.y {
+                BVec3::new(false, false, true)
+            } else {
+                BVec3::new(false, true, true)
+            }
+        } else {
+            if check_abs.x > check_abs.z {
+                BVec3::new(true, true, false)
+            } else if check_abs.z > check_abs.x {
+                BVec3::new(false, false, true)
+            } else {
+                BVec3::new(true, true, true)
+            }
+        };
+
+        if delta.x {
+            octant.x = check.x > 0.;
+        }
+        if delta.y {
+            octant.y = check.y > 0.;
+        }
+        if delta.z {
+            octant.z = check.z > 0.;
+        }
+
+        octant
     }
 }
 
@@ -278,11 +391,11 @@ impl OctreeNode {
     pub fn collision_system() {}
 
     ///Quick conversion from octant to leaf index.
-    const fn octant_to_index(x: bool, y: bool, z: bool) -> usize {
+    const fn octant_to_index(octant: BVec3) -> usize {
         const STEP_X: usize = 4;
         const STEP_Y: usize = 2;
         const STEP_Z: usize = 1;
-        STEP_X * x as usize + STEP_Y * y as usize + STEP_Z * z as usize
+        STEP_X * octant.x as usize + STEP_Y * octant.y as usize + STEP_Z * octant.z as usize
     }
 
     pub fn len(&self) -> usize {
@@ -313,10 +426,8 @@ impl OctreeNode {
                 ret
             } else {
                 match &mut self.leaves {
-                    Some(leaves) => match (entity.bound - self.bound.center()).octants() {
-                        Some(BVec3 { x, y, z }) => {
-                            leaves[Self::octant_to_index(x, y, z)].insert_inner(entity)
-                        }
+                    Some(leaves) => match (entity.bound - self.bound.center()).octant() {
+                        Some(octant) => leaves[Self::octant_to_index(octant)].insert_inner(entity),
                         None => self.entities.insert(entity),
                     },
                     _ => false,
@@ -343,9 +454,9 @@ impl OctreeNode {
             Self::from_bound(self.bound.get_octant(true, true, true)),
         ];
         self.entities.retain(
-            |&entity| match (entity.bound - self.bound.center()).octants() {
-                Some(BVec3 { x, y, z }) => {
-                    let leaf = &mut new_leaves[Self::octant_to_index(x, y, z)];
+            |&entity| match (entity.bound - self.bound.center()).octant() {
+                Some(octant) => {
+                    let leaf = &mut new_leaves[Self::octant_to_index(octant)];
                     if leaf.entities.insert(entity) {
                         leaf.length += 1;
                     }
@@ -365,10 +476,10 @@ impl OctreeNode {
     }
 
     fn remove_inner(&mut self, entity: OctreeEntity) -> bool {
-        let ret = match (entity.bound - self.bound.center()).octants() {
-            Some(BVec3 { x, y, z }) => {
+        let ret = match (entity.bound - self.bound.center()).octant() {
+            Some(octant) => {
                 if let Some(ref mut leaves) = self.leaves {
-                    match leaves[Self::octant_to_index(x, y, z)].remove_inner(entity) {
+                    match leaves[Self::octant_to_index(octant)].remove_inner(entity) {
                         true => true,
                         false => self.entities.remove(&entity),
                     }
@@ -395,50 +506,130 @@ impl OctreeNode {
                 f(&entity.entity);
             }
         }
-        match (bound - self.bound.center()).octants() {
-            Some(BVec3 { x, y, z }) => {
+        match (bound - self.bound.center()).octant() {
+            Some(octant) => {
                 if let Some(ref leaves) = self.leaves {
-                    leaves[Self::octant_to_index(x, y, z)].intersect(bound, f);
+                    leaves[Self::octant_to_index(octant)].intersect(bound, f);
                 }
             }
             _ => {}
         }
     }
 
-    ///Return the bound and point raycast have hit first.
+    // ///Return the bound and point raycast have hit first.
+    // pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, BoundingBox, Vec3)> {
+    //     //Get hit point by just multiplying len between origin with dir.
+    //     match self.raycast(ray) {
+    //         Some((e, b, len)) => Some((e, b, ray.origin + ray.dir * (len - correction))),
+    //         None => None,
+    //     }
+    // }
+    //
+    // ///Return the bound raycast have hit first.
+    // pub fn raycast(&self, ray: Ray) -> Option<(Entity, BoundingBox, f32)> {
+    //     //At least, ray should intersect nodes' bound
+    //     if let Some(_) = self.bound.intersects_ray(ray) {
+    //         let mut ret = None;
+    //         //Checking all containing entities.
+    //         for entity in self.entities.iter() {
+    //             if let Some(candidate) = entity.bound.intersects_ray(ray) {
+    //                 //result should be the shortest one.
+    //                 ret = match ret {
+    //                     Some((_, _, len)) if candidate >= len => ret,
+    //                     _ => Some((entity.entity, entity.bound, candidate)),
+    //                 }
+    //             }
+    //         }
+    //         //Also under leaves.
+    //         if let Some(ref leaves) = self.leaves {
+    //             for leaf in leaves.iter() {
+    //                 if let Some((e, b, candidate)) = leaf.raycast(ray) {
+    //                     ret = match ret {
+    //                         Some((_, _, len)) if candidate >= len => ret,
+    //                         _ => Some((e, b, candidate)),
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         ret
+    //     } else {
+    //         None
+    //     }
+    // }
+
     pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, BoundingBox, Vec3)> {
-        //Get hit point by just multiplying len between origin with dir.
-        match self.raycast(ray) {
-            Some((e, b, len)) => Some((e, b, ray.origin + ray.dir * (len - correction))),
+        let mut len = f32::INFINITY;
+        match self.raycast_inner(ray, &mut len, &mut 0.) {
+            Some((e, b)) => Some((e, b, ray.origin + ray.dir * (len - correction))),
+            None => None,
+        }
+    }
+
+    pub fn raycast(&self, ray: Ray) -> Option<(Entity, BoundingBox, f32)> {
+        let mut len = f32::INFINITY;
+        match self.raycast_inner(ray, &mut len, &mut 0.) {
+            Some((e, b)) => Some((e, b, len)),
             None => None,
         }
     }
 
     ///Return the bound raycast have hit first.
-    pub fn raycast(&self, ray: Ray) -> Option<(Entity, BoundingBox, f32)> {
-        //At least, ray should intersect nodes' bound
-        if let Some(_) = self.bound.intersects_ray(ray) {
+    pub fn raycast_inner(
+        &self,
+        ray: Ray,
+        len: &mut f32,
+        pivot: &mut f32,
+    ) -> Option<(Entity, BoundingBox)> {
+        //At least, ray should intersect node's bound
+        if let Some((_, t_max)) = self.bound.intersects_ray_raw(ray) {
             let mut ret = None;
             //Checking all containing entities.
             for entity in self.entities.iter() {
-                if let Some(len) = entity.bound.intersects_ray(ray) {
+                if let Some(candidate) = entity.bound.intersects_ray(ray) {
                     //result should be the shortest one.
-                    ret = match ret {
-                        Some((_, _, len2)) if len >= len2 => ret,
-                        _ => Some((entity.entity, entity.bound, len)),
+                    if candidate < *len {
+                        ret = Some((entity.entity, entity.bound));
+                        *len = candidate;
                     }
                 }
             }
-            //Also under leaves.
+
+            //Checking leaves.
             if let Some(ref leaves) = self.leaves {
-                for leaf in leaves.iter() {
-                    if let Some((e, b, len)) = leaf.raycast(ray) {
-                        ret = match ret {
-                            Some((_, _, len2)) if len >= len2 => ret,
-                            _ => Some((e, b, len)),
+                let prev_pivot = *pivot;
+                //Determine octant.
+                match ray.octant_at(*pivot, self.bound) {
+                    Some(mut octant) => loop {
+                        //Get result of raycast on leaf.
+                        match leaves[Self::octant_to_index(octant)].raycast_inner(ray, len, pivot) {
+                            //First success is if and only if the shortest raycast on the leaves.
+                            tmp @ Some(_) => {
+                                ret = tmp;
+                                break;
+                            }
+                            //Fail then shift leaf.
+                            None => {
+                                //Covers case that ray doesn't intersect even bound of leaf.
+                                if *pivot == prev_pivot {
+                                    *pivot = t_max
+                                };
+                                let prev_octant = octant;
+                                octant = ray.next_octant(octant, *pivot, self.bound);
+                                //Dead end of ray through leaves.
+                                if octant == prev_octant {
+                                    break;
+                                }
+                            }
                         }
-                    }
+                    },
+                    //Discard if ray is lie on xy, yz, xz plane and x, y, z axis
+                    None => {}
                 }
+            }
+
+            //Shift pivot if there is no result.
+            if let None = ret {
+                *pivot = t_max;
             }
             ret
         } else {
