@@ -1,5 +1,5 @@
 use crate::{
-    asset::{Textures, UI, UI_CROSSHAIR},
+    asset::{Images, CROSSHAIR, IMAGE_UI},
     consts::*,
     physics::{Ray, *},
     states::*,
@@ -8,15 +8,19 @@ use crate::{
 
 use std::f32::consts::PI;
 
-use bevy::window::CursorGrabMode;
 use bevy::{
     input::mouse::MouseMotion,
     prelude::{
         shape::{Cube, Plane},
         *,
     },
+    window::CursorGrabMode,
 };
 
+use crate::asset::{
+    Meshes, PolylineMaterials, Polylines, StandardMaterials, BLUE, CUBE, GREEN, MESH_BUILT_IN,
+    PLANE, RED, SEA_GREEN, S_MAT_BUILT_IN, UNIT_X, WHITE, WHITE_TRANS,
+};
 use bevy_polyline::prelude::*;
 
 ///Batch setup for In game.
@@ -53,11 +57,11 @@ impl Plugin for InGamePlugin {
 fn setup(
     mut commands: Commands,
     state: Res<GlobalState>,
-    textures: Res<Textures>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut polylines: ResMut<Assets<Polyline>>,
-    mut polyline_materials: ResMut<Assets<PolylineMaterial>>,
+    textures: Res<Images>,
+    mut meshs: Res<Meshes>,
+    mut standard_materials: Res<StandardMaterials>,
+    mut polylines: ResMut<Polylines>,
+    mut polyline_materials: ResMut<PolylineMaterials>,
     windows: Res<Windows>,
 ) {
     //camera
@@ -73,7 +77,7 @@ fn setup(
     let window = windows.primary();
     commands.spawn((
         ImageBundle {
-            image: textures[UI][UI_CROSSHAIR].clone().into(),
+            image: textures[IMAGE_UI][CROSSHAIR].clone().into(),
             style: Style {
                 size: Size::new(Val::Px(32.), Val::Px(32.)),
                 position_type: PositionType::Absolute,
@@ -107,8 +111,9 @@ fn setup(
     //plane
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Plane { size: 100.0 }.into()),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+            mesh: meshs[MESH_BUILT_IN][PLANE].clone(),
+            material: standard_materials[S_MAT_BUILT_IN][SEA_GREEN].clone(),
+            transform: Transform::from_scale(Vec3::new(100., 1., 100.)),
             ..default()
         },
         state.mark(),
@@ -116,15 +121,9 @@ fn setup(
     //x axis line
     commands.spawn((
         PolylineBundle {
-            polyline: polylines.add(Polyline {
-                vertices: vec![Vec3::ZERO, Vec3::X * 100.],
-                ..default()
-            }),
-            material: polyline_materials.add(PolylineMaterial {
-                color: Color::RED,
-                perspective: true,
-                ..default()
-            }),
+            polyline: polylines[UNIT_X].clone(),
+            material: polyline_materials[RED].clone(),
+            transform: Transform::from_scale(Vec3::new(100., 1., 1.)),
             ..default()
         },
         state.mark(),
@@ -132,15 +131,10 @@ fn setup(
     //y axis line
     commands.spawn((
         PolylineBundle {
-            polyline: polylines.add(Polyline {
-                vertices: vec![Vec3::ZERO, Vec3::Y * 100.],
-                ..default()
-            }),
-            material: polyline_materials.add(PolylineMaterial {
-                color: Color::GREEN,
-                perspective: true,
-                ..default()
-            }),
+            polyline: polylines[UNIT_X].clone(),
+            material: polyline_materials[GREEN].clone(),
+            transform: Transform::from_rotation(Quat::from_rotation_z(FRAC_PI_2))
+                .with_scale(Vec3::new(100., 1., 1.)),
             ..default()
         },
         state.mark(),
@@ -148,21 +142,33 @@ fn setup(
     // z axis line
     commands.spawn((
         PolylineBundle {
-            polyline: polylines.add(Polyline {
-                vertices: vec![Vec3::ZERO, Vec3::Z * 100.],
-                ..default()
-            }),
-            material: polyline_materials.add(PolylineMaterial {
-                color: Color::BLUE,
-                perspective: true,
-                ..default()
-            }),
+            polyline: polylines[UNIT_X].clone(),
+            material: polyline_materials[BLUE].clone(),
+            transform: Transform::from_rotation(Quat::from_rotation_y(-FRAC_PI_2))
+                .with_scale(Vec3::new(100., 1., 1.)),
             ..default()
         },
         state.mark(),
     ));
     //Octree
     commands.spawn((OctreeNode::new(64., Vec3::new(0., 32., 0.)), state.mark()));
+    //selection
+    let selection = Selection::new(
+        meshs[MESH_BUILT_IN][CUBE].clone(),
+        standard_materials[S_MAT_BUILT_IN][WHITE].clone(),
+        standard_materials[S_MAT_BUILT_IN][WHITE_TRANS].clone(),
+        BoundingBox::from_size(1.),
+    );
+    commands.spawn((
+        PbrBundle {
+            mesh: selection.mesh.clone(),
+            material: selection.material_trans.clone(),
+            visibility: Visibility::INVISIBLE,
+            ..default()
+        },
+        selection,
+        state.mark(),
+    ));
 }
 
 ///locks cursor to window while in game.
@@ -247,25 +253,73 @@ fn move_camera(
 #[derive(Component)]
 pub struct LookAt(Option<(Option<(Entity, BoundingBox)>, Vec3)>);
 
+#[derive(Component)]
+pub struct Selection {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    material_trans: Handle<StandardMaterial>,
+    bound: BoundingBox,
+}
+
+impl Selection {
+    pub fn new(
+        mesh: Handle<Mesh>,
+        material: Handle<StandardMaterial>,
+        material_trans: Handle<StandardMaterial>,
+        bound: BoundingBox,
+    ) -> Self {
+        Self {
+            mesh,
+            material,
+            material_trans,
+            bound,
+        }
+    }
+}
+
+fn select(
+    mut selected: Query<(
+        &mut Handle<Mesh>,
+        &mut Handle<StandardMaterial>,
+        &mut Selection,
+    )>,
+) {
+    let _ = selected.single_mut();
+}
+
 ///Prepare and store data about where camera looking at.
 fn camera_look_at(
     mut camera: Query<(&Transform, &mut LookAt), With<Camera>>,
     octree: Query<&OctreeNode>,
+    mut selection: Query<(&mut Transform, &mut Visibility), (With<Selection>, Without<Camera>)>,
 ) {
     let (transform, mut look_at) = camera.single_mut();
     let camera_pos = transform.translation;
     let camera_forward = transform.forward();
     let octree = octree.single();
+    let mut selection = selection.single_mut();
+    fn set_selection(pos: Vec3, mut selection: (Mut<Transform>, Mut<Visibility>)) -> Vec3 {
+        let pos = pos.floor() + 0.5;
+        selection.0.translation = pos;
+        *selection.1 = Visibility::VISIBLE;
+        pos
+    }
     //Get raycast hit point.
     look_at.0 = match octree.raycast_hit(Ray::new(camera_pos, camera_forward), 0.001) {
-        Some((e, b, p)) => Some((Some((e, b)), p.floor())),
+        Some((e, b, p)) => Some((Some((e, b)), set_selection(p, selection))),
         //If no result, checks root of tree's bound.
         None => match octree
             .bound
             .intersects_ray(Ray::new(camera_pos, camera_forward))
         {
-            Some(len) => Some((None, (camera_pos + camera_forward * (len - 0.001)).floor())),
-            None => None,
+            Some(len) => Some((
+                None,
+                set_selection(camera_pos + camera_forward * (len - 0.001), selection),
+            )),
+            None => {
+                *selection.1 = Visibility::INVISIBLE;
+                None
+            }
         },
     };
 }
@@ -276,30 +330,28 @@ fn place(
     mut octree: Query<&mut OctreeNode>,
     camera: Query<&LookAt, With<Camera>>,
     state: Res<GlobalState>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    selection: Query<&Selection>,
     input: Res<Input<MouseButton>>,
 ) {
     //Checks only when left click.
     if input.just_pressed(MouseButton::Left) {
-        if let Some((_, mut p)) = camera.single().0 {
-            p += Vec3::splat(0.5);
-            let b = BoundingBox::from_size(1.);
+        if let Some((_, mut pos)) = camera.single().0 {
+            let selection = selection.single();
             //If there's a result, spawn a cube.
             let entity = commands
                 .spawn((
                     PbrBundle {
-                        mesh: meshes.add(Cube::new(1.).into()),
-                        material: materials.add(Color::WHITE.into()),
-                        transform: Transform::from_translation(p),
+                        mesh: selection.mesh.clone(),
+                        material: selection.material.clone(),
+                        transform: Transform::from_translation(pos),
                         ..default()
                     },
                     state.mark(),
                     Collides,
-                    b,
+                    selection.bound,
                 ))
                 .id();
-            octree.single_mut().insert(entity, b + p);
+            octree.single_mut().insert(entity, selection.bound + pos);
         }
     }
 }

@@ -8,7 +8,7 @@ pub(crate) mod ui;
 
 use crate::{
     asset::{
-        assets_set_up, {Fonts, Textures},
+        assets_set_up, {Fonts, Images},
     },
     states::{in_game::*, main_menu::*, *},
 };
@@ -16,6 +16,7 @@ use crate::{
 use bevy::prelude::*;
 
 use bevy_polyline::PolylinePlugin;
+use crate::asset::AssetManagingPlugin;
 
 fn main() {
     App::new()
@@ -28,9 +29,7 @@ fn main() {
             ..default()
         }))
         //Asset manage helpers
-        .init_resource::<Fonts>()
-        .init_resource::<Textures>()
-        .add_startup_system(assets_set_up)
+        .add_plugin(AssetManagingPlugin)
         //Polyline lib
         .add_plugin(PolylinePlugin)
         //Global states manager
