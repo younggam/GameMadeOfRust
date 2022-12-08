@@ -7,16 +7,13 @@ pub(crate) mod states;
 pub(crate) mod ui;
 
 use crate::{
-    asset::{
-        assets_set_up, {Fonts, Images},
-    },
+    asset::AssetManagingPlugin,
     states::{in_game::*, main_menu::*, *},
 };
 
 use bevy::prelude::*;
 
 use bevy_polyline::PolylinePlugin;
-use crate::asset::AssetManagingPlugin;
 
 fn main() {
     App::new()

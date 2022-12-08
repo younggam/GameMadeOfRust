@@ -1,7 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
-use bevy::prelude::shape::{Cube, Plane};
-use bevy::{prelude::*, utils::hashbrown::HashMap};
+use bevy::{
+    prelude::{
+        shape::{Cube, Plane},
+        *,
+    },
+    utils::hashbrown::HashMap,
+};
 
 use bevy_polyline::prelude::*;
 
@@ -126,6 +131,7 @@ impl_handle_container!(
 );
 
 ///Load assets and map them to str.
+#[allow(const_item_mutation)]
 pub fn assets_set_up(
     asset_server: Res<AssetServer>,
     mut fonts: ResMut<Fonts>,

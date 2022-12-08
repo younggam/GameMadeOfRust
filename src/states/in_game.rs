@@ -1,26 +1,13 @@
 use crate::{
-    asset::{Images, CROSSHAIR, IMAGE_UI},
+    asset::*,
     consts::*,
     physics::{Ray, *},
     states::*,
     ui::*,
 };
 
-use std::f32::consts::PI;
+use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 
-use bevy::{
-    input::mouse::MouseMotion,
-    prelude::{
-        shape::{Cube, Plane},
-        *,
-    },
-    window::CursorGrabMode,
-};
-
-use crate::asset::{
-    Meshes, PolylineMaterials, Polylines, StandardMaterials, BLUE, CUBE, GREEN, MESH_BUILT_IN,
-    PLANE, RED, SEA_GREEN, S_MAT_BUILT_IN, UNIT_X, WHITE, WHITE_TRANS,
-};
 use bevy_polyline::prelude::*;
 
 ///Batch setup for In game.
@@ -58,10 +45,10 @@ fn setup(
     mut commands: Commands,
     state: Res<GlobalState>,
     textures: Res<Images>,
-    mut meshs: Res<Meshes>,
-    mut standard_materials: Res<StandardMaterials>,
-    mut polylines: ResMut<Polylines>,
-    mut polyline_materials: ResMut<PolylineMaterials>,
+    meshs: Res<Meshes>,
+    standard_materials: Res<StandardMaterials>,
+    polylines: Res<Polylines>,
+    polyline_materials: Res<PolylineMaterials>,
     windows: Res<Windows>,
 ) {
     //camera
@@ -335,7 +322,7 @@ fn place(
 ) {
     //Checks only when left click.
     if input.just_pressed(MouseButton::Left) {
-        if let Some((_, mut pos)) = camera.single().0 {
+        if let Some((_, pos)) = camera.single().0 {
             let selection = selection.single();
             //If there's a result, spawn a cube.
             let entity = commands

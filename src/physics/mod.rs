@@ -41,6 +41,21 @@ impl BoundingBox {
         }
     }
 
+    pub fn from_points(points: &[Vec3]) -> Option<Self> {
+        //점이 최소 3개는 되어야 다각형 이다.
+        if points.len() < 3 {
+            None
+        } else {
+            let mut min = Vec3::splat(f32::INFINITY);
+            let mut max = Vec3::splat(f32::NEG_INFINITY);
+            for point in points {
+                min = min.min(*point);
+                max = max.max(*point);
+            }
+            Some(BoundingBox { min, max })
+        }
+    }
+
     pub fn length(&self) -> Vec3 {
         self.max - self.min
     }
@@ -110,6 +125,45 @@ impl BoundingBox {
             Vec3::new(min_x, min_y, min_z),
             Vec3::new(max_x, max_y, max_z),
         )
+    }
+
+    pub fn get_octants(&self) -> [Self; 8] {
+        let BoundingBox { min, max } = *self;
+        let center = self.center();
+        [
+            Self {
+                min: min,
+                max: center,
+            },
+            Self {
+                min: Vec3::new(min.x, min.y, center.z),
+                max: Vec3::new(center.x, center.y, max.z),
+            },
+            Self {
+                min: Vec3::new(min.x, center.y, min.z),
+                max: Vec3::new(center.x, max.y, center.z),
+            },
+            Self {
+                min: Vec3::new(min.x, center.y, center.z),
+                max: Vec3::new(center.x, max.y, max.z),
+            },
+            Self {
+                min: Vec3::new(center.x, min.y, min.z),
+                max: Vec3::new(max.x, center.y, center.z),
+            },
+            Self {
+                min: Vec3::new(center.x, min.y, center.z),
+                max: Vec3::new(max.x, center.y, max.z),
+            },
+            Self {
+                min: Vec3::new(center.x, center.y, min.z),
+                max: Vec3::new(max.x, max.y, center.z),
+            },
+            Self {
+                min: center,
+                max: self.max,
+            },
+        ]
     }
 
     ///Check where point is lying on in coordinate system that origin is center of bound.
@@ -375,6 +429,8 @@ pub struct OctreeNode {
 }
 
 impl OctreeNode {
+    const SPLIT_THRESHOLD: usize = 7;
+
     pub fn new(size: f32, offset: Vec3) -> OctreeNode {
         Self::from_bound(BoundingBox::from_size_offset(size, offset))
     }
@@ -388,7 +444,42 @@ impl OctreeNode {
         }
     }
 
-    pub fn collision_system() {}
+    // pub fn collision_system(&self) {
+    //     let mut i = self.entities.iter();
+    //     while let Some(entity0) = i.next() {
+    //         let mut j = i.clone();
+    //         for entity1 in j {
+    //             if entity0.intersects(entity1) && entity0.collides(entity1) {
+    //                 //do something
+    //             }
+    //         }
+    //         if let Some(leaves) = &self.leaves {
+    //             for leaf in leaves {
+    //                 leaf.collision_with(entity0);
+    //             }
+    //         }
+    //     }
+    //     if let Some(leaves) = &self.leaves {
+    //         for leaf in leaves {
+    //             leaf.collision_system();
+    //         }
+    //     }
+    // }
+    //
+    // pub fn collision_with(&self, entity0: OctreeEntity) {
+    //     if entity0.intersects(&self.bound) {
+    //         for entity1 in self.entities.iter() {
+    //             if entity0.intersects(entity1) && entity0.collides(entity1) {
+    //                 //do something.
+    //             }
+    //         }
+    //         if let Some(leaves) = &self.leaves {
+    //             for leaf in leaves {
+    //                 leaf.collision_with(entity0);
+    //             }
+    //         }
+    //     }
+    // }
 
     ///Quick conversion from octant to leaf index.
     const fn octant_to_index(octant: BVec3) -> usize {
@@ -416,7 +507,7 @@ impl OctreeNode {
 
     fn insert_inner(&mut self, entity: OctreeEntity) -> bool {
         //Kinda threshold to prevent frequent division.
-        let ret = if self.entities.len() < 4 && self.leaves.is_none() {
+        let ret = if self.entities.len() < Self::SPLIT_THRESHOLD && self.leaves.is_none() {
             self.entities.insert(entity)
         } else {
             if let None = self.leaves {
@@ -443,16 +534,7 @@ impl OctreeNode {
     //Split existing entities.
     fn split(&mut self) {
         println!("split");
-        let mut new_leaves = [
-            Self::from_bound(self.bound.get_octant(false, false, false)),
-            Self::from_bound(self.bound.get_octant(false, false, true)),
-            Self::from_bound(self.bound.get_octant(false, true, false)),
-            Self::from_bound(self.bound.get_octant(false, true, true)),
-            Self::from_bound(self.bound.get_octant(true, false, false)),
-            Self::from_bound(self.bound.get_octant(true, false, true)),
-            Self::from_bound(self.bound.get_octant(true, true, false)),
-            Self::from_bound(self.bound.get_octant(true, true, true)),
-        ];
+        let mut new_leaves = self.bound.get_octants().map(|b| Self::from_bound(b));
         self.entities.retain(
             |&entity| match (entity.bound - self.bound.center()).octant() {
                 Some(octant) => {
@@ -476,18 +558,16 @@ impl OctreeNode {
     }
 
     fn remove_inner(&mut self, entity: OctreeEntity) -> bool {
-        let ret = match (entity.bound - self.bound.center()).octant() {
-            Some(octant) => {
-                if let Some(ref mut leaves) = self.leaves {
-                    match leaves[Self::octant_to_index(octant)].remove_inner(entity) {
-                        true => true,
-                        false => self.entities.remove(&entity),
-                    }
-                } else {
-                    self.entities.remove(&entity)
-                }
+        let ret = if let Some(ref mut leaves) = self.leaves {
+            match (entity.bound - self.bound.center()).octant() {
+                Some(octant) => match leaves[Self::octant_to_index(octant)].remove_inner(entity) {
+                    true => true,
+                    false => self.entities.remove(&entity),
+                },
+                None => self.entities.remove(&entity),
             }
-            None => self.entities.remove(&entity),
+        } else {
+            self.entities.remove(&entity)
         };
         if ret {
             self.length -= 1;
