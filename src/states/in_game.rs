@@ -144,7 +144,7 @@ fn setup(
         meshs[MESH_BUILT_IN][CUBE].clone(),
         standard_materials[S_MAT_BUILT_IN][WHITE].clone(),
         standard_materials[S_MAT_BUILT_IN][WHITE_TRANS].clone(),
-        BoundingBox::from_size(1.),
+        AABB::from_size(1.),
     );
     commands.spawn((
         PbrBundle {
@@ -238,14 +238,14 @@ fn move_camera(
 }
 
 #[derive(Component)]
-pub struct LookAt(Option<(Option<(Entity, BoundingBox)>, Vec3)>);
+pub struct LookAt(Option<(Option<(Entity, AABB)>, Vec3)>);
 
 #[derive(Component)]
 pub struct Selection {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     material_trans: Handle<StandardMaterial>,
-    bound: BoundingBox,
+    bound: AABB,
 }
 
 impl Selection {
@@ -253,7 +253,7 @@ impl Selection {
         mesh: Handle<Mesh>,
         material: Handle<StandardMaterial>,
         material_trans: Handle<StandardMaterial>,
-        bound: BoundingBox,
+        bound: AABB,
     ) -> Self {
         Self {
             mesh,
