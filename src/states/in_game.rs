@@ -138,7 +138,10 @@ fn setup(
         state.mark(),
     ));
     //Octree
-    commands.spawn((OctreeNode::new(64., Vec3::new(0., 32., 0.)), state.mark()));
+    commands.spawn((
+        Octree::from_size_offset(64, Vec3::splat(0.9), 64., Vec3::new(0., 32., 0.)),
+        state.mark(),
+    ));
     //selection
     let selection = Selection::new(
         meshs[MESH_BUILT_IN][CUBE].clone(),
@@ -245,7 +248,7 @@ pub struct Selection {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     material_trans: Handle<StandardMaterial>,
-    bound: AABB,
+    aabb: AABB,
 }
 
 impl Selection {
@@ -253,13 +256,13 @@ impl Selection {
         mesh: Handle<Mesh>,
         material: Handle<StandardMaterial>,
         material_trans: Handle<StandardMaterial>,
-        bound: AABB,
+        aabb: AABB,
     ) -> Self {
         Self {
             mesh,
             material,
             material_trans,
-            bound,
+            aabb,
         }
     }
 }
@@ -277,7 +280,7 @@ fn select(
 ///Prepare and store data about where camera looking at.
 fn camera_look_at(
     mut camera: Query<(&Transform, &mut LookAt), With<Camera>>,
-    octree: Query<&OctreeNode>,
+    octree: Query<&Octree>,
     mut selection: Query<(&mut Transform, &mut Visibility), (With<Selection>, Without<Camera>)>,
 ) {
     let (transform, mut look_at) = camera.single_mut();
@@ -296,8 +299,8 @@ fn camera_look_at(
         Some((e, b, p)) => Some((Some((e, b)), set_selection(p, selection))),
         //If no result, checks root of tree's bound.
         None => match octree
-            .bound
-            .intersects_ray(Ray::new(camera_pos, camera_forward))
+            .base_aabb()
+            .intersects_ray(&Ray::new(camera_pos, camera_forward))
         {
             Some(len) => Some((
                 None,
@@ -314,17 +317,33 @@ fn camera_look_at(
 ///Places cube where camera looking at. Temporary.
 fn place(
     mut commands: Commands,
-    mut octree: Query<&mut OctreeNode>,
+    mut octree: Query<&mut Octree>,
     camera: Query<&LookAt, With<Camera>>,
     state: Res<GlobalState>,
     selection: Query<&Selection>,
     input: Res<Input<MouseButton>>,
+    time: Res<Time>,
+    mut press_time: Local<f32>,
 ) {
     //Checks only when left click.
-    if input.just_pressed(MouseButton::Left) {
+    let mut place = input.just_pressed(MouseButton::Left);
+    if !place {
+        //Repeat place if button is pressed long enough.
+        if input.pressed(MouseButton::Left) {
+            *press_time += time.delta_seconds();
+            if *press_time >= 1. {
+                place = true;
+                *press_time -= 0.1;
+            }
+        } else {
+            *press_time = 0.;
+        }
+    }
+
+    if place {
         if let Some((_, pos)) = camera.single().0 {
             let selection = selection.single();
-            //If there's a result, spawn a cube.
+            //If there's a result, spawn a selection.
             let entity = commands
                 .spawn((
                     PbrBundle {
@@ -335,10 +354,10 @@ fn place(
                     },
                     state.mark(),
                     Collides,
-                    selection.bound,
+                    selection.aabb,
                 ))
                 .id();
-            octree.single_mut().insert(entity, selection.bound + pos);
+            octree.single_mut().insert(entity, selection.aabb + pos);
         }
     }
 }
@@ -346,12 +365,28 @@ fn place(
 ///Replaces cube where camera looking at. Temporary.
 fn replace(
     mut commands: Commands,
-    mut octree: Query<&mut OctreeNode>,
+    mut octree: Query<&mut Octree>,
     camera: Query<&LookAt, With<Camera>>,
     input: Res<Input<MouseButton>>,
+    time: Res<Time>,
+    mut press_time: Local<f32>,
 ) {
     //Checks only when right click.
-    if input.just_pressed(MouseButton::Right) {
+    let mut replace = input.just_pressed(MouseButton::Right);
+    if !replace {
+        //Repeat place if button is pressed long enough.
+        if input.pressed(MouseButton::Right) {
+            *press_time += time.delta_seconds();
+            if *press_time >= 1. {
+                replace = true;
+                *press_time -= 0.1;
+            }
+        } else {
+            *press_time = 0.;
+        }
+    }
+
+    if replace {
         if let Some((Some((e, b)), _)) = camera.single().0 {
             //If there's a result, despawn a cube.
             octree.single_mut().remove(e, b);

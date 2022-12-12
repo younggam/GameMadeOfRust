@@ -117,18 +117,18 @@ impl AABB {
     }
 
     ///Get octant of this box's center as origin.
-    pub fn get_octant(&self, x: bool, y: bool, z: bool) -> Self {
-        let (min_x, max_x) = if x {
+    pub fn get_octant(&self, bvec3: BVec3) -> Self {
+        let (min_x, max_x) = if bvec3.x {
             (self.center_x(), self.max.x)
         } else {
             (self.min.x, self.center_x())
         };
-        let (min_y, max_y) = if y {
+        let (min_y, max_y) = if bvec3.y {
             (self.center_y(), self.max.y)
         } else {
             (self.min.y, self.center_y())
         };
-        let (min_z, max_z) = if z {
+        let (min_z, max_z) = if bvec3.z {
             (self.center_z(), self.max.z)
         } else {
             (self.min.z, self.center_z())
@@ -137,39 +137,6 @@ impl AABB {
             Vec3::new(min_x, min_y, min_z),
             Vec3::new(max_x, max_y, max_z),
         )
-    }
-
-    pub fn get_octants(&self) -> [Self; 8] {
-        let Self { min, max } = *self;
-        let center = self.center();
-        [
-            Self::new(min, center),
-            Self::new(
-                Vec3::new(min.x, min.y, center.z),
-                Vec3::new(center.x, center.y, max.z),
-            ),
-            Self::new(
-                Vec3::new(min.x, center.y, min.z),
-                Vec3::new(center.x, max.y, center.z),
-            ),
-            Self::new(
-                Vec3::new(min.x, center.y, center.z),
-                Vec3::new(center.x, max.y, max.z),
-            ),
-            Self::new(
-                Vec3::new(center.x, min.y, min.z),
-                Vec3::new(max.x, center.y, center.z),
-            ),
-            Self::new(
-                Vec3::new(center.x, min.y, center.z),
-                Vec3::new(max.x, center.y, max.z),
-            ),
-            Self::new(
-                Vec3::new(center.x, center.y, min.z),
-                Vec3::new(max.x, max.y, center.z),
-            ),
-            Self::new(center, max),
-        ]
     }
 
     ///Check where point is lying on in coordinate system that origin is center of bound.
@@ -214,13 +181,13 @@ impl AABB {
     }
 
     ///Checks if ray is penetrating box.
-    pub fn intersects_ray(&self, ray: Ray) -> Option<f32> {
+    pub fn intersects_ray(&self, ray: &Ray) -> Option<f32> {
         self.intersects_ray_raw(ray)
             .map(|(t_min, t_max)| if t_min <= 0. { t_max } else { t_min })
     }
 
     ///Checks if ray is penetrating box and returns raw data for two location on bound that ray passes.
-    pub fn intersects_ray_raw(&self, ray: Ray) -> Option<(f32, f32)> {
+    pub fn intersects_ray_raw(&self, ray: &Ray) -> Option<(f32, f32)> {
         let mut t_min = f32::NEG_INFINITY;
         let mut t_max = f32::INFINITY;
 
@@ -310,8 +277,8 @@ impl Ray {
 
     ///Extract octant from ray's initial traverse at certain spot.
     /// - None if ray is included on axis and base planes.
-    pub fn octant_at(&self, pivot: f32, bound: AABB) -> Option<BVec3> {
-        let [mut x, mut y, mut z] = bound.is_on_octant(self.origin + self.dir * pivot);
+    pub fn octant_at(&self, pivot: f32, aabb: AABB) -> Option<BVec3> {
+        let [mut x, mut y, mut z] = aabb.is_on_octant(self.origin + self.dir * pivot);
         if x.is_eq() && self.dir.x != 0. {
             if self.dir.x > 0. {
                 x = Ordering::Greater
@@ -343,8 +310,7 @@ impl Ray {
     ///Get next octant from point, where ray is touching on previous octant.
     ///Ray pivot should lie on previous octant's surface for accurate result.
     pub fn next_octant(&self, mut octant: BVec3, pivot: f32, bound: AABB) -> BVec3 {
-        let check = self.origin + pivot * self.dir
-            - bound.get_octant(octant.x, octant.y, octant.z).center();
+        let check = self.origin + pivot * self.dir - bound.get_octant(octant).center();
         let check_abs = check.abs();
         let delta = if check_abs.x > check_abs.y {
             if check_abs.x > check_abs.z {
@@ -430,6 +396,12 @@ impl Ord for OctreeEntity {
     }
 }
 
+///A variation of Octree.
+/// - There is no guarantee that children nodes are 8.
+/// - Entity go or create leaf node if and only if it fit with leaf.
+/// - This guarantees entity is on only one leaf.
+/// - A leaf could have entities itself while having children.
+/// - This has node pool that Empty leaf could be recycled.
 #[derive(Component)]
 pub struct Octree {
     ///Index of root node from pool.
@@ -437,9 +409,9 @@ pub struct Octree {
     ///Base aabb for creating root node.
     base_aabb: AABB,
     ///Kinda node pool
-    nodes: Vec<OctreeNodeA>,
-    node_count: usize,
-    node_capacity: usize,
+    nodes: Vec<OctreeNode>,
+    ///Min leaf size to prevent too deep nodes.
+    min_leaf_extent: Vec3,
     ///Index of idle root node from pool.
     idle: usize,
     len: usize,
@@ -447,23 +419,29 @@ pub struct Octree {
 
 impl Octree {
     const NULL_INDEX: usize = usize::MAX;
-    const SPLIT_THRESHOLD: usize = 4;
 
-    pub fn new(size: f32, offset: Vec3) -> Self {
-        Self::from_aabb(AABB::from_size_offset(size, offset))
-    }
-
-    pub fn from_aabb(aabb: AABB) -> Self {
-        let node_capacity = 16;
+    pub fn new(capacity: usize, min_leaf_extent: Vec3, aabb: AABB) -> Self {
         Self {
             root: Self::NULL_INDEX,
             base_aabb: aabb,
-            nodes: Vec::with_capacity(node_capacity),
-            node_count: 0,
-            node_capacity,
+            nodes: Vec::with_capacity(capacity),
+            min_leaf_extent,
             idle: Self::NULL_INDEX,
             len: 0,
         }
+    }
+
+    pub fn from_size_offset(
+        capacity: usize,
+        min_leaf_extent: Vec3,
+        size: f32,
+        offset: Vec3,
+    ) -> Self {
+        Self::new(
+            capacity,
+            min_leaf_extent,
+            AABB::from_size_offset(size, offset),
+        )
     }
 
     pub fn len(&self) -> usize {
@@ -475,11 +453,16 @@ impl Octree {
         self.len == 0
     }
 
+    ///Root node aabb.
+    pub fn base_aabb(&self) -> &AABB {
+        &self.base_aabb
+    }
+
     ///Create a node or find and set a idle node.
     fn get_or_create_node(&mut self, aabb: AABB, parent: usize) -> usize {
         if self.idle == Self::NULL_INDEX {
             //Create a node if there is no idle node.
-            self.nodes.push(OctreeNodeA::new(aabb, parent));
+            self.nodes.push(OctreeNode::new(aabb, parent));
             return self.nodes.len() - 1;
         }
         //Get and set idle node.
@@ -491,7 +474,8 @@ impl Octree {
         index
     }
 
-    /// Create a node or find a idle node.
+    ///Idles empty node.
+    ///Note: It doesn't idle empty parent node too.
     fn idles_node(&mut self, index: usize, octant_index: usize) {
         let parent_index = self.nodes[index].parent;
         if parent_index != Self::NULL_INDEX {
@@ -510,41 +494,45 @@ impl Octree {
     ///Return is whether entity doesn't already exist.
     pub fn insert(&mut self, entity: Entity, aabb: AABB) -> bool {
         let entity = OctreeEntity::new(entity, aabb);
+        self.try_extend(&aabb);
         let mut index = self.root;
-        if index == Self::NULL_INDEX {
-            //When there is no node in tree at all.
-            index = self.get_or_create_node(self.base_aabb, Self::NULL_INDEX);
-        }
-        let mut ret = false;
+        let mut parent_index = Self::NULL_INDEX;
+        let mut octant_index = Self::NULL_INDEX;
+        let mut node_aabb = self.base_aabb;
+        let ret;
         loop {
+            if index == Self::NULL_INDEX {
+                //Prevent tree to have too deep node.
+                if self.min_leaf_extent.cmpgt(node_aabb.length()).any() {
+                    ret = self.nodes[parent_index].entities.insert(entity);
+                    break;
+                }
+                //When there is no next node, add new node into tree.
+                index = self.get_or_create_node(node_aabb, parent_index);
+                if parent_index == Self::NULL_INDEX {
+                    self.root = index;
+                } else {
+                    //If there was parent, add child to it.
+                    println!("split");
+                    let parent = &mut self.nodes[parent_index];
+                    parent.children_len += 1;
+                    parent.children[octant_index] = index;
+                }
+            }
             let node = &mut self.nodes[index];
-            //Kinda threshold to prevent frequent division.
-            if node.entities.len() < Self::SPLIT_THRESHOLD && node.children_len == 0 {
-                ret = node.entities.insert(entity);
-                break;
-            } else {
-                //Whether entity is fit in node's arbitrary octant.
-                match (entity.aabb - node.aabb.center()).octant() {
-                    Some(octant) => {
-                        //Determine octant and put entity in the child
-                        let octant_index = OctreeNodeA::octant_to_index(octant);
-                        let child_index = node.children[octant_index];
-                        if child_index == Self::NULL_INDEX {
-                            //When child is not created yet, create and set.
-                            let new_aabb = node.aabb.get_octant(octant.x, octant.y, octant.z);
-                            let parent_index = index;
-                            index = self.get_or_create_node(new_aabb, index);
-                            self.nodes[parent_index].children[octant_index] = index;
-                            break;
-                        } else {
-                            index = child_index
-                        }
-                    }
-                    None => {
-                        //Put directly to current node.
-                        ret = node.entities.insert(entity);
-                        break;
-                    }
+            //Whether entity is fit in node's arbitrary octant.
+            match (entity.aabb - node.aabb.center()).octant() {
+                Some(octant) => {
+                    //Determine octant of child.
+                    parent_index = index;
+                    octant_index = OctreeNode::octant_to_index(octant);
+                    node_aabb = node.aabb.get_octant(octant);
+                    index = node.children[octant_index];
+                }
+                None => {
+                    //Put directly to current node.
+                    ret = node.entities.insert(entity);
+                    break;
                 }
             };
         }
@@ -556,19 +544,17 @@ impl Octree {
     }
 
     ///Extend above root to cover given aabb.
-    fn try_extend(&mut self, aabb: AABB) {
+    fn try_extend(&mut self, aabb: &AABB) {
         if self.root == Self::NULL_INDEX {
             return;
         }
-        self.base_aabb.extend_for(&aabb, |aabb| {
+        self.base_aabb.extend_for(aabb, |aabb| {
             let index = self.get_or_create_node(aabb, Self::NULL_INDEX);
-            let prev_root_aabb = self.nodes[self.root].aabb;
-            let mut node = &mut self.nodes[index];
-            let octant = (prev_root_aabb - node.aabb.center())
+            let octant = (self.nodes[self.root].aabb - self.nodes[index].aabb.center())
                 .octant()
                 .expect("Maybe float point precision problem");
-            let octant_index = OctreeNodeA::octant_to_index(octant);
-            node.children[octant_index] = index;
+            self.nodes[self.root].parent = index;
+            self.nodes[index].children[OctreeNode::octant_to_index(octant)] = self.root;
             self.base_aabb = aabb;
             self.root = index;
         });
@@ -580,11 +566,8 @@ impl Octree {
         let mut index = self.root;
         let mut octant_index = Self::NULL_INDEX;
         let mut ret = false;
-        loop {
-            if index == Self::NULL_INDEX {
-                //When tree traversal met dead end.
-                break;
-            }
+        //Stops when tree traversal met dead end.
+        while index != Self::NULL_INDEX {
             let node = &mut self.nodes[index];
             if node.children_len == 0 {
                 //When node has no child.
@@ -592,13 +575,14 @@ impl Octree {
                 if node.entities.is_empty() {
                     //Makes node idle when it is totally empty.
                     self.idles_node(index, octant_index);
+                    println!("unsplit");
                 }
                 break;
             } else {
                 //Whether entity is fit in node's arbitrary octant.
                 match (entity.aabb - node.aabb.center()).octant() {
                     Some(octant) => {
-                        octant_index = OctreeNodeA::octant_to_index(octant);
+                        octant_index = OctreeNode::octant_to_index(octant);
                         index = node.children[octant_index];
                     }
                     None => {
@@ -615,31 +599,135 @@ impl Octree {
         ret
     }
 
-    ///// Iterating entities that intersects with given bounding box.
-    // pub fn intersect(&self, aabb: AABB, f: impl Fn(&Entity)) {
-    //     let mut index = self.root;
-    //     loop {
-    //         if index == Self::NULL_INDEX {
-    //             break;
-    //         }
-    //         let node = &mut self.nodes[index];
-    //         for entity in node.entities.iter() {
-    //             if entity.aabb.intersects(&aabb) {
-    //                 f(&entity.entity);
-    //             }
-    //         }
-    //         match (aabb - node.aabb.center()).octant() {
-    //             Some(octant) => {
-    //                 let octant_index = OctreeNode::octant_to_index(octant);
-    //                 index = node.children[octant_index];
-    //             }
-    //             _ => {}
-    //         }
-    //     }
-    // }
+    ///Iterating entities that intersects with given bounding box.
+    pub fn intersect(&self, aabb: AABB, f: impl Fn(&Entity)) {
+        let mut index = self.root;
+        while index != Self::NULL_INDEX {
+            let node = &self.nodes[index];
+            for entity in node.entities.iter() {
+                if entity.aabb.intersects(&aabb) {
+                    f(&entity.entity);
+                }
+            }
+            match (aabb - node.aabb.center()).octant() {
+                Some(octant) => {
+                    //Go deep until entity does not fit with leaf.
+                    index = node.get_child_index(octant);
+                }
+                None => {
+                    self.intersect_children(&index, &aabb, &f);
+                    break;
+                }
+            }
+        }
+    }
+
+    ///When entity has possibility to intersect with all leaves below.
+    fn intersect_children(&self, index: &usize, aabb: &AABB, f: &impl Fn(&Entity)) {
+        //Iterates all possible child.
+        for child_index in self.nodes[*index].children.iter() {
+            if *child_index == Self::NULL_INDEX {
+                continue;
+            }
+            let child = &self.nodes[*child_index];
+            if child.aabb.intersects(&aabb) {
+                for entity in child.entities.iter() {
+                    if entity.aabb.intersects(&aabb) {
+                        f(&entity.entity);
+                    }
+                }
+                self.intersect_children(child_index, aabb, f);
+            }
+        }
+    }
+
+    ///Return the bound of raycast have hit first and the hit point.
+    pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, AABB, Vec3)> {
+        self.raycast(ray)
+            .map(|(e, b, len)| (e, b, ray.origin + ray.dir * (len - correction)))
+    }
+
+    ///Return the bound of raycast have hit first and its distance.
+    pub fn raycast(&self, ray: Ray) -> Option<(Entity, AABB, f32)> {
+        let mut len = f32::INFINITY;
+        let mut pivot = 0f32;
+        self.raycast_inner(self.root, &ray, &mut len, &mut pivot)
+            .map(|(e, b)| (e, b, len))
+    }
+
+    fn raycast_inner(
+        &self,
+        index: usize,
+        ray: &Ray,
+        len: &mut f32,
+        pivot: &mut f32,
+    ) -> Option<(Entity, AABB)> {
+        if index == Self::NULL_INDEX {
+            None
+        } else {
+            let node = &self.nodes[index];
+            //Ray should intersect at least node's aabb.
+            match node.aabb.intersects_ray_raw(ray) {
+                Some((_, t_max)) => {
+                    let mut ret = None;
+                    //Raycast entities in node itself.
+                    for entity in node.entities.iter() {
+                        if let Some(candidate) = entity.aabb.intersects_ray(ray) {
+                            if candidate < *len {
+                                ret = Some((entity.entity, entity.aabb));
+                                *len = candidate;
+                            }
+                        }
+                    }
+                    //If node has child.
+                    if node.children_len != 0 {
+                        match ray.octant_at(*pivot, node.aabb) {
+                            Some(mut octant) => loop {
+                                let child_index = node.get_child_index(octant);
+                                if child_index == Self::NULL_INDEX {
+                                    //If child node doesn't exists, update just pivot.
+                                    *pivot = match node
+                                        .aabb
+                                        .get_octant(octant)
+                                        .intersects_ray_raw(ray)
+                                    {
+                                        Some((_, t_max)) => t_max,
+                                        None => t_max,
+                                    };
+                                } else {
+                                    //Get result of raycast on leaf.
+                                    match self.raycast_inner(child_index, ray, len, pivot) {
+                                        //First success is if and only if the shortest raycast on the leaves.
+                                        tmp @ Some(_) => {
+                                            ret = tmp;
+                                            break;
+                                        }
+                                        None => {}
+                                    }
+                                }
+                                //Shift leaf if there is still no result..
+                                let prev_octant = octant;
+                                octant = ray.next_octant(octant, *pivot, node.aabb);
+                                //Dead end of ray through leaves.
+                                if octant == prev_octant {
+                                    break;
+                                }
+                            },
+                            //Discard if ray is lie on xy, yz, xz plane and x, y, z axis
+                            None => {}
+                        }
+                    }
+                    //Update pivot to Next.
+                    *pivot = t_max;
+                    ret
+                }
+                None => None,
+            }
+        }
+    }
 }
 
-pub struct OctreeNodeA {
+pub struct OctreeNode {
     ///Bound of itself.
     aabb: AABB,
     ///Entities that a few or doesn't fit with childs.
@@ -649,7 +737,7 @@ pub struct OctreeNodeA {
     children_len: usize,
 }
 
-impl OctreeNodeA {
+impl OctreeNode {
     pub fn new(aabb: AABB, parent: usize) -> Self {
         Self {
             aabb,
@@ -667,307 +755,8 @@ impl OctreeNodeA {
         const STEP_Z: usize = 1;
         STEP_X * octant.x as usize + STEP_Y * octant.y as usize + STEP_Z * octant.z as usize
     }
-}
 
-///Octree that 3 dimensional version of binary heap. Useful for broad collision via aabb.
-#[derive(Component)]
-pub struct OctreeNode {
-    ///Bound of itself.
-    pub bound: AABB,
-    ///Entities that a few or doesn't fit with leaves.
-    entities: BTreeSet<OctreeEntity>,
-    ///Leaf nodes that divides space.
-    leaves: Option<Box<[OctreeNode; 8]>>,
-    ///Total amounts of entities below.
-    length: usize,
-}
-
-impl OctreeNode {
-    const SPLIT_THRESHOLD: usize = 4;
-
-    pub fn new(size: f32, offset: Vec3) -> OctreeNode {
-        Self::from_bound(AABB::from_size_offset(size, offset))
-    }
-
-    pub fn from_bound(bound: AABB) -> Self {
-        OctreeNode {
-            bound,
-            entities: BTreeSet::new(),
-            leaves: None,
-            length: 0,
-        }
-    }
-
-    // pub fn collision_system(&self) {
-    //     let mut i = self.entities.iter();
-    //     while let Some(entity0) = i.next() {
-    //         let mut j = i.clone();
-    //         for entity1 in j {
-    //             if entity0.intersects(entity1) && entity0.collides(entity1) {
-    //                 //do something
-    //             }
-    //         }
-    //         if let Some(leaves) = &self.leaves {
-    //             for leaf in leaves {
-    //                 leaf.collision_with(entity0);
-    //             }
-    //         }
-    //     }
-    //     if let Some(leaves) = &self.leaves {
-    //         for leaf in leaves {
-    //             leaf.collision_system();
-    //         }
-    //     }
-    // }
-    //
-    // pub fn collision_with(&self, entity0: OctreeEntity) {
-    //     if entity0.intersects(&self.bound) {
-    //         for entity1 in self.entities.iter() {
-    //             if entity0.intersects(entity1) && entity0.collides(entity1) {
-    //                 //do something.
-    //             }
-    //         }
-    //         if let Some(leaves) = &self.leaves {
-    //             for leaf in leaves {
-    //                 leaf.collision_with(entity0);
-    //             }
-    //         }
-    //     }
-    // }
-
-    ///Quick conversion from octant to leaf index.
-    const fn octant_to_index(octant: BVec3) -> usize {
-        const STEP_X: usize = 4;
-        const STEP_Y: usize = 2;
-        const STEP_Z: usize = 1;
-        STEP_X * octant.x as usize + STEP_Y * octant.y as usize + STEP_Z * octant.z as usize
-    }
-
-    pub fn len(&self) -> usize {
-        self.length
-    }
-
-    ///If node and its leaves entirely empty.
-    pub fn is_empty(&self) -> bool {
-        self.length == 0
-    }
-
-    ///Return is whether entity doesn't already exist.
-    pub fn insert(&mut self, entity: Entity, bound: AABB) -> bool {
-        let ret = self.insert_inner(OctreeEntity::new(entity, bound));
-        println!("counts {}", self.len());
-        ret
-    }
-
-    fn insert_inner(&mut self, entity: OctreeEntity) -> bool {
-        //Kinda threshold to prevent frequent division.
-        let ret = if self.entities.len() < Self::SPLIT_THRESHOLD && self.leaves.is_none() {
-            self.entities.insert(entity)
-        } else {
-            if let None = self.leaves {
-                //Directly insert to prevent recursive split.
-                let ret = self.entities.insert(entity);
-                self.split();
-                ret
-            } else {
-                match &mut self.leaves {
-                    Some(leaves) => match (entity.aabb - self.bound.center()).octant() {
-                        Some(octant) => leaves[Self::octant_to_index(octant)].insert_inner(entity),
-                        None => self.entities.insert(entity),
-                    },
-                    _ => false,
-                }
-            }
-        };
-        if ret {
-            self.length += 1;
-        }
-        ret
-    }
-
-    //Split existing entities.
-    fn split(&mut self) {
-        println!("split");
-        let mut new_leaves = self.bound.get_octants().map(|b| Self::from_bound(b));
-        self.entities.retain(
-            |&entity| match (entity.aabb - self.bound.center()).octant() {
-                Some(octant) => {
-                    let leaf = &mut new_leaves[Self::octant_to_index(octant)];
-                    if leaf.entities.insert(entity) {
-                        leaf.length += 1;
-                    }
-                    false
-                }
-                None => true,
-            },
-        );
-        self.leaves = Some(Box::new(new_leaves));
-    }
-
-    ///Return is whether existed entity is removed.
-    pub fn remove(&mut self, entity: Entity, bound: AABB) -> bool {
-        let ret = self.remove_inner(OctreeEntity::new(entity, bound));
-        println!("counts {}", self.len());
-        ret
-    }
-
-    fn remove_inner(&mut self, entity: OctreeEntity) -> bool {
-        let ret = if let Some(ref mut leaves) = self.leaves {
-            match (entity.aabb - self.bound.center()).octant() {
-                Some(octant) => match leaves[Self::octant_to_index(octant)].remove_inner(entity) {
-                    true => true,
-                    false => self.entities.remove(&entity),
-                },
-                None => self.entities.remove(&entity),
-            }
-        } else {
-            self.entities.remove(&entity)
-        };
-        if ret {
-            self.length -= 1;
-            if self.is_empty() {
-                println!("unsplit");
-                self.leaves = None;
-            }
-        }
-        ret
-    }
-
-    ///Iterating entities that intersects with given bounding box.
-    pub fn intersect(&self, bound: AABB, f: impl Fn(&Entity)) {
-        for entity in self.entities.iter() {
-            if entity.aabb.intersects(&bound) {
-                f(&entity.entity);
-            }
-        }
-        match (bound - self.bound.center()).octant() {
-            Some(octant) => {
-                if let Some(ref leaves) = self.leaves {
-                    leaves[Self::octant_to_index(octant)].intersect(bound, f);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // ///Return the bound and point raycast have hit first.
-    // pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, BoundingBox, Vec3)> {
-    //     //Get hit point by just multiplying len between origin with dir.
-    //     match self.raycast(ray) {
-    //         Some((e, b, len)) => Some((e, b, ray.origin + ray.dir * (len - correction))),
-    //         None => None,
-    //     }
-    // }
-    //
-    // ///Return the bound raycast have hit first.
-    // pub fn raycast(&self, ray: Ray) -> Option<(Entity, BoundingBox, f32)> {
-    //     //At least, ray should intersect nodes' bound
-    //     if let Some(_) = self.bound.intersects_ray(ray) {
-    //         let mut ret = None;
-    //         //Checking all containing entities.
-    //         for entity in self.entities.iter() {
-    //             if let Some(candidate) = entity.bound.intersects_ray(ray) {
-    //                 //result should be the shortest one.
-    //                 ret = match ret {
-    //                     Some((_, _, len)) if candidate >= len => ret,
-    //                     _ => Some((entity.entity, entity.bound, candidate)),
-    //                 }
-    //             }
-    //         }
-    //         //Also under leaves.
-    //         if let Some(ref leaves) = self.leaves {
-    //             for leaf in leaves.iter() {
-    //                 if let Some((e, b, candidate)) = leaf.raycast(ray) {
-    //                     ret = match ret {
-    //                         Some((_, _, len)) if candidate >= len => ret,
-    //                         _ => Some((e, b, candidate)),
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         ret
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, AABB, Vec3)> {
-        let mut len = f32::INFINITY;
-        match self.raycast_inner(ray, &mut len, &mut 0.) {
-            Some((e, b)) => Some((e, b, ray.origin + ray.dir * (len - correction))),
-            None => None,
-        }
-    }
-
-    pub fn raycast(&self, ray: Ray) -> Option<(Entity, AABB, f32)> {
-        let mut len = f32::INFINITY;
-        match self.raycast_inner(ray, &mut len, &mut 0.) {
-            Some((e, b)) => Some((e, b, len)),
-            None => None,
-        }
-    }
-
-    ///Return the bound raycast have hit first.
-    pub fn raycast_inner(
-        &self,
-        ray: Ray,
-        len: &mut f32,
-        pivot: &mut f32,
-    ) -> Option<(Entity, AABB)> {
-        //At least, ray should intersect node's bound
-        if let Some((_, t_max)) = self.bound.intersects_ray_raw(ray) {
-            let mut ret = None;
-            //Checking all containing entities.
-            for entity in self.entities.iter() {
-                if let Some(candidate) = entity.aabb.intersects_ray(ray) {
-                    //result should be the shortest one.
-                    if candidate < *len {
-                        ret = Some((entity.entity, entity.aabb));
-                        *len = candidate;
-                    }
-                }
-            }
-
-            //Checking leaves.
-            if let Some(ref leaves) = self.leaves {
-                let prev_pivot = *pivot;
-                //Determine octant.
-                match ray.octant_at(*pivot, self.bound) {
-                    Some(mut octant) => loop {
-                        //Get result of raycast on leaf.
-                        match leaves[Self::octant_to_index(octant)].raycast_inner(ray, len, pivot) {
-                            //First success is if and only if the shortest raycast on the leaves.
-                            tmp @ Some(_) => {
-                                ret = tmp;
-                                break;
-                            }
-                            //Fail then shift leaf.
-                            None => {
-                                //Covers case that ray doesn't intersect even bound of leaf.
-                                if *pivot == prev_pivot {
-                                    *pivot = t_max
-                                };
-                                let prev_octant = octant;
-                                octant = ray.next_octant(octant, *pivot, self.bound);
-                                //Dead end of ray through leaves.
-                                if octant == prev_octant {
-                                    break;
-                                }
-                            }
-                        }
-                    },
-                    //Discard if ray is lie on xy, yz, xz plane and x, y, z axis
-                    None => {}
-                }
-            }
-
-            //Shift pivot if there is no result.
-            if let None = ret {
-                *pivot = t_max;
-            }
-            ret
-        } else {
-            None
-        }
+    pub fn get_child_index(&self, octant: BVec3) -> usize {
+        self.children[Self::octant_to_index(octant)]
     }
 }

@@ -163,8 +163,8 @@ pub fn setup_exit(mut commands: Commands, state: Res<GlobalState>, fonts: Res<Fo
                     position_type: PositionType::Absolute,
                     position: UiRect::new(
                         Val::Percent(30.0),
-                        Val::Percent(70.0),
-                        Val::Percent(62.0),
+                        Val::Percent(30.0),
+                        Val::Percent(38.0),
                         Val::Percent(38.0),
                     ),
                     flex_wrap: FlexWrap::Wrap,
