@@ -17,7 +17,6 @@ pub struct AABB {
     max: Vec3,
 }
 
-#[allow(dead_code)]
 impl AABB {
     pub fn new(min: Vec3, max: Vec3) -> Self {
         if min.cmpge(max).any() || min.is_nan() || max.is_nan() {
@@ -39,13 +38,13 @@ impl AABB {
     }
 
     ///Determine min and max from size and offset.
-    pub fn from_size_offset(mut size: f32, offset: Vec3) -> Self {
+    pub fn _from_size_offset(mut size: f32, offset: Vec3) -> Self {
         size = size.abs() * 0.5;
         Self::new(offset - size, offset + size)
     }
 
     //Extract aabb from shape vertices and objects' pos and rot.
-    pub fn from_points(points: &[Vec3], pos: Vec3, rot: Quat) -> Self {
+    pub fn _from_points(points: &[Vec3], pos: Vec3, rot: Quat) -> Self {
         if points.len() < 3 {
             panic!("Number of points should be at least 3 to be polygon.");
         } else {
@@ -72,15 +71,15 @@ impl AABB {
         self.max - self.min
     }
 
-    pub fn x_length(&self) -> f32 {
+    pub fn _x_length(&self) -> f32 {
         self.max.x - self.min.x
     }
 
-    pub fn y_length(&self) -> f32 {
+    pub fn _y_length(&self) -> f32 {
         self.max.y - self.min.y
     }
 
-    pub fn z_length(&self) -> f32 {
+    pub fn _z_length(&self) -> f32 {
         self.max.z - self.min.z
     }
 
@@ -183,12 +182,12 @@ impl AABB {
     }
 
     ///Checks whether this and other bounding box intersected. Exclusive bound line.
-    pub fn intersects(&self, other: &Self) -> bool {
+    pub fn _intersects(&self, other: &Self) -> bool {
         self.min.cmplt(other.max).all() && self.max.cmpgt(other.min).all()
     }
 
     ///Checks whether point is in bounding box.
-    pub fn overlaps_point(&self, point: Vec3) -> bool {
+    pub fn _overlaps_point(&self, point: Vec3) -> bool {
         self.min.cmplt(point).all() && self.max.cmplt(point).all()
     }
 

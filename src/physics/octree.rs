@@ -1,4 +1,4 @@
-use crate::physics::{aabb::AABB, ray::Ray};
+use crate::physics::{aabb::AABB, ray::Ray, ray::RayHitInfo};
 
 use std::{cmp::Ordering, collections::BTreeSet, ops::Deref};
 
@@ -86,7 +86,7 @@ impl Octree {
         }
     }
 
-    pub fn from_size_offset(
+    pub fn _from_size_offset(
         capacity: usize,
         min_leaf_extent: Vec3,
         size: f32,
@@ -95,7 +95,7 @@ impl Octree {
         Self::new(
             capacity,
             min_leaf_extent,
-            AABB::from_size_offset(size, offset),
+            AABB::_from_size_offset(size, offset),
         )
     }
 
@@ -104,7 +104,7 @@ impl Octree {
     }
 
     ///If node and its leaves entirely empty.
-    pub fn is_empty(&self) -> bool {
+    pub fn _is_empty(&self) -> bool {
         self.len == 0
     }
 
@@ -255,12 +255,12 @@ impl Octree {
     }
 
     ///Iterating entities that intersects with given bounding box.
-    pub fn intersect(&self, aabb: AABB, f: impl Fn(&Entity)) {
+    pub fn _intersect(&self, aabb: AABB, f: impl Fn(&Entity)) {
         let mut index = self.root;
         while index != Self::NULL_INDEX {
             let node = &self.nodes[index];
             for entity in node.entities.iter() {
-                if entity.aabb.intersects(&aabb) {
+                if entity.aabb._intersects(&aabb) {
                     f(&entity.entity);
                 }
             }
@@ -270,7 +270,7 @@ impl Octree {
                     index = node.get_child_index(octant);
                 }
                 None => {
-                    self.intersect_children(&index, &aabb, &f);
+                    self._intersect_children(&index, &aabb, &f);
                     break;
                 }
             }
@@ -278,36 +278,30 @@ impl Octree {
     }
 
     ///When entity has possibility to intersect with all leaves below.
-    fn intersect_children(&self, index: &usize, aabb: &AABB, f: &impl Fn(&Entity)) {
+    fn _intersect_children(&self, index: &usize, aabb: &AABB, f: &impl Fn(&Entity)) {
         //Iterates all possible child.
         for child_index in self.nodes[*index].children.iter() {
             if *child_index == Self::NULL_INDEX {
                 continue;
             }
             let child = &self.nodes[*child_index];
-            if child.aabb.intersects(&aabb) {
+            if child.aabb._intersects(&aabb) {
                 for entity in child.entities.iter() {
-                    if entity.aabb.intersects(&aabb) {
+                    if entity.aabb._intersects(&aabb) {
                         f(&entity.entity);
                     }
                 }
-                self.intersect_children(child_index, aabb, f);
+                self._intersect_children(child_index, aabb, f);
             }
         }
     }
 
-    ///Return the bound of raycast have hit first and the hit point.
-    pub fn raycast_hit(&self, ray: Ray, correction: f32) -> Option<(Entity, AABB, Vec3)> {
-        self.raycast(ray)
-            .map(|(e, b, len)| (e, b, ray.point(len - correction)))
-    }
-
-    ///Return the bound of raycast have hit first and its distance.
-    pub fn raycast(&self, ray: Ray) -> Option<(Entity, AABB, f32)> {
+    ///Return hit information about raycast.
+    pub fn raycast<'a>(&self, ray: &'a Ray) -> Option<RayHitInfo<'a>> {
         let mut len = f32::INFINITY;
         let mut pivot = 0f32;
-        self.raycast_inner(self.root, &ray, &mut len, &mut pivot)
-            .map(|(e, b)| (e, b, len))
+        self.raycast_inner(self.root, ray, &mut len, &mut pivot)
+            .map(|(e, b)| RayHitInfo::new(ray, e, b, len))
     }
 
     fn raycast_inner(

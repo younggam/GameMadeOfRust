@@ -240,7 +240,7 @@ fn move_camera(
         }
         //apply
         transform.translation = (transform.translation + to_move.clamp_length_max(1.0) * delta)
-            .clamp(BLUEPRINT_BOUND.min(), BLUEPRINT_BOUND.max());
+            .clamp(BLUEPRINT_BOUND.min() + 0.5, BLUEPRINT_BOUND.max() - 0.5);
     }
 }
 
@@ -271,7 +271,7 @@ impl Selection {
     }
 }
 
-fn select(
+fn _select(
     mut selected: Query<(
         &mut Handle<Mesh>,
         &mut Handle<StandardMaterial>,
@@ -299,16 +299,17 @@ fn camera_look_at(
         pos
     }
     //Get raycast hit point.
-    look_at.0 = match octree.raycast_hit(Ray::new(camera_pos, camera_forward), 0.001) {
-        Some((e, b, p)) => Some((Some((e, b)), set_selection(p, selection))),
+    let ray = Ray::new(camera_pos, camera_forward);
+    look_at.0 = match octree.raycast(&ray) {
+        Some(hit_info) => Some((
+            Some((hit_info.entity(), hit_info.aabb())),
+            set_selection(hit_info.point(0.001), selection),
+        )),
         //If no result, checks root of tree's bound.
-        None => match octree
-            .base_aabb()
-            .intersects_ray(&Ray::new(camera_pos, camera_forward))
-        {
+        None => match octree.base_aabb().intersects_ray(&ray) {
             Some(len) => Some((
                 None,
-                set_selection(camera_pos + camera_forward * (len - 0.001), selection),
+                set_selection(ray.point(len - 0.001), selection),
             )),
             None => {
                 *selection.1 = Visibility::INVISIBLE;

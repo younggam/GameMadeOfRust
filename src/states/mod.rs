@@ -134,12 +134,12 @@ mod global {
         }
 
         ///increment only hierarchy.
-        fn increment(&mut self) {
+        fn _increment(&mut self) {
             self.value += 1
         }
 
         ///decrement only hierarchy.
-        fn decrement(&mut self) {
+        fn _decrement(&mut self) {
             self.value -= 1
         }
 
@@ -217,12 +217,12 @@ mod global {
         }
 
         ///Stacks minor state. Equivalent to Schedule::push
-        pub fn push<Child: PushState>(&mut self, child: Child) {
+        pub fn _push<Child: PushState>(&mut self, child: Child) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
             }
             child.push(&mut self.app_state);
-            self.hierarchy.increment();
+            self.hierarchy._increment();
             self.state_change_way = StateChangeWay::Push;
         }
 
@@ -236,7 +236,7 @@ mod global {
         }
 
         ///Releases minor state. Equivalent to Schedule::pop
-        pub fn pop(&mut self) {
+        pub fn _pop(&mut self) {
             if self.state_change_way != StateChangeWay::None {
                 unreachable_release!("Already in state transition");
             }
@@ -244,7 +244,7 @@ mod global {
                 Some(a) => a,
                 _ => unreachable_release!("Already in that state"),
             };
-            self.hierarchy.decrement();
+            self.hierarchy._decrement();
             self.state_change_way = StateChangeWay::Pop;
         }
 
