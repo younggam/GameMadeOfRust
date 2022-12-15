@@ -1,7 +1,7 @@
 use crate::{
     asset::*,
     consts::*,
-    physics::{Ray, *},
+    physics::{aabb::AABB, octree::Octree, ray::Ray, Collides},
     states::*,
     ui::*,
 };
@@ -9,6 +9,9 @@ use crate::{
 use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 
 use bevy_polyline::prelude::*;
+
+const BLUEPRINT_BOUND: AABB =
+    unsafe { AABB::new_unchecked(Vec3::new(-32., 0., -32.), Vec3::new(32., 64., 32.)) };
 
 ///Batch setup for In game.
 pub struct InGamePlugin;
@@ -139,7 +142,7 @@ fn setup(
     ));
     //Octree
     commands.spawn((
-        Octree::from_size_offset(64, Vec3::splat(0.9), 64., Vec3::new(0., 32., 0.)),
+        Octree::new(64, Vec3::splat(0.9), BLUEPRINT_BOUND),
         state.mark(),
     ));
     //selection
@@ -236,7 +239,8 @@ fn move_camera(
             to_move -= up;
         }
         //apply
-        transform.translation += to_move.clamp_length_max(1.0) * delta;
+        transform.translation = (transform.translation + to_move.clamp_length_max(1.0) * delta)
+            .clamp(BLUEPRINT_BOUND.min(), BLUEPRINT_BOUND.max());
     }
 }
 

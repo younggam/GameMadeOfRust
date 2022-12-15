@@ -62,7 +62,7 @@ pub fn exit_no_button(
         (
             &Interaction,
             &mut BackgroundColor,
-            &Action<for<'a> fn(&'a mut GlobalState)>,
+            &Action<fn(&mut GlobalState)>,
             &AppExitMark,
         ),
         (Changed<Interaction>, With<Button>),
@@ -88,7 +88,7 @@ pub fn exit_yes_button(
         (
             &Interaction,
             &mut BackgroundColor,
-            &Action<for<'a> fn(&'a mut EventWriter<AppExit>)>,
+            &Action<fn(&mut EventWriter<AppExit>)>,
             &AppExitMark,
         ),
         (Changed<Interaction>, With<Button>),
