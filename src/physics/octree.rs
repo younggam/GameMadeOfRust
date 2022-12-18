@@ -86,7 +86,7 @@ impl Octree {
         }
     }
 
-    pub fn _from_size_offset(
+    pub fn from_size_offset(
         capacity: usize,
         min_leaf_extent: Vec3,
         size: f32,
@@ -109,7 +109,7 @@ impl Octree {
     }
 
     ///Root node aabb.
-    pub fn base_aabb(&self) -> &AABB {
+    pub fn _base_aabb(&self) -> &AABB {
         &self.base_aabb
     }
 
@@ -201,18 +201,19 @@ impl Octree {
     ///Extend above root to cover given aabb.
     fn try_extend(&mut self, aabb: &AABB) {
         if self.root == Self::NULL_INDEX {
-            return;
+            self.base_aabb = self.base_aabb.extend(aabb);
+        } else {
+            self.base_aabb.extend_for(aabb, |aabb| {
+                let index = self.get_or_create_node(aabb, Self::NULL_INDEX);
+                let octant = (self.nodes[self.root].aabb - self.nodes[index].aabb.center())
+                    .octant()
+                    .expect("Maybe float point precision problem");
+                self.nodes[self.root].parent = index;
+                self.nodes[index].children[OctreeNode::octant_to_index(octant)] = self.root;
+                self.base_aabb = aabb;
+                self.root = index;
+            });
         }
-        self.base_aabb.extend_for(aabb, |aabb| {
-            let index = self.get_or_create_node(aabb, Self::NULL_INDEX);
-            let octant = (self.nodes[self.root].aabb - self.nodes[index].aabb.center())
-                .octant()
-                .expect("Maybe float point precision problem");
-            self.nodes[self.root].parent = index;
-            self.nodes[index].children[OctreeNode::octant_to_index(octant)] = self.root;
-            self.base_aabb = aabb;
-            self.root = index;
-        });
     }
 
     ///Return is whether existed entity is removed.

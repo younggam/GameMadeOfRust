@@ -11,7 +11,7 @@ use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 use bevy_polyline::prelude::*;
 
 const BLUEPRINT_BOUND: AABB =
-    unsafe { AABB::new_unchecked(Vec3::new(-32., 0., -32.), Vec3::new(32., 64., 32.)) };
+    unsafe { AABB::new_unchecked(Vec3::new(-31.5, -0.5, -31.5), Vec3::new(31.5, 62.5, 31.5)) };
 
 ///Batch setup for In game.
 pub struct InGamePlugin;
@@ -103,7 +103,8 @@ fn setup(
         PbrBundle {
             mesh: meshs[MESH_BUILT_IN][PLANE].clone(),
             material: standard_materials[S_MAT_BUILT_IN][SEA_GREEN].clone(),
-            transform: Transform::from_scale(Vec3::new(100., 1., 100.)),
+            transform: Transform::from_scale(Vec3::new(100., 1., 100.))
+                .with_translation(Vec3::new(0., -0.5, 0.)),
             ..default()
         },
         state.mark(),
@@ -142,7 +143,7 @@ fn setup(
     ));
     //Octree
     commands.spawn((
-        Octree::new(64, Vec3::splat(0.9), BLUEPRINT_BOUND),
+        Octree::from_size_offset(64, Vec3::splat(0.9), 64., Vec3::new(0.5, 31.5, 0.5)),
         state.mark(),
     ));
     //selection
@@ -293,7 +294,7 @@ fn camera_look_at(
     let octree = octree.single();
     let mut selection = selection.single_mut();
     fn set_selection(pos: Vec3, mut selection: (Mut<Transform>, Mut<Visibility>)) -> Vec3 {
-        let pos = pos.floor() + 0.5;
+        let pos = pos.round();
         selection.0.translation = pos;
         *selection.1 = Visibility::VISIBLE;
         pos
@@ -306,11 +307,8 @@ fn camera_look_at(
             set_selection(hit_info.point(0.001), selection),
         )),
         //If no result, checks root of tree's bound.
-        None => match octree.base_aabb().intersects_ray(&ray) {
-            Some(len) => Some((
-                None,
-                set_selection(ray.point(len - 0.001), selection),
-            )),
+        None => match BLUEPRINT_BOUND.intersects_ray(&ray) {
+            Some(len) => Some((None, set_selection(ray.point(len - 0.001), selection))),
             None => {
                 *selection.1 = Visibility::INVISIBLE;
                 None

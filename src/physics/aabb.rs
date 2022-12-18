@@ -11,7 +11,7 @@ use bevy::{
 };
 
 ///Aabb box. Min value must smaller than Max value in every axis.
-#[derive(Component, Clone, Copy, PartialEq)]
+#[derive(Component, Clone, Copy, PartialEq, Debug)]
 pub struct AABB {
     min: Vec3,
     max: Vec3,
@@ -100,6 +100,17 @@ impl AABB {
     }
 
     ///Extends bounding box exponentially until size is bigger than other.
+    pub fn extend(mut self, other: &Self) -> Self {
+        while self.min.x > other.min.x || self.min.y > other.min.y || self.min.z > other.min.z {
+            self.min -= self.length();
+        }
+        while self.max.x < other.max.x || self.max.y < other.max.y || self.max.z < other.max.z {
+            self.max += self.length();
+        }
+        self
+    }
+
+    ///Same as extend, but get function as parameter.
     pub fn extend_for(mut self, other: &Self, mut f: impl FnMut(AABB)) {
         while self.min.x > other.min.x || self.min.y > other.min.y || self.min.z > other.min.z {
             self.min -= self.length();
