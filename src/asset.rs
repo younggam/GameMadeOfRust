@@ -21,6 +21,10 @@ pub const CROSSHAIR: &str = "crosshair.png";
 pub const MESH_BUILT_IN: usize = 0;
 pub const CUBE: &str = "cube";
 pub const PLANE: &str = "plane";
+pub const MESH_WEAPON: usize = 1;
+pub const GUN_TOWER_0_BASE: &str = "gun_tower0.glb#Mesh0/Primitive0";
+pub const GUN_TOWER_0_TOWER: &str = "gun_tower0.gltf#Mesh1/Primitive0";
+pub const GUN_TOWER_0_GUN: &str = "gun_tower0.glb#Mesh2/Primitive0";
 
 //standard materials
 pub const S_MAT_BUILT_IN: usize = 0;
@@ -108,7 +112,7 @@ impl_handle_container!(
     ///Mesh handle access by str. Should index name be sank to whether type or path?
     Meshes,
     Mesh,
-    1
+    2
 );
 
 impl_handle_container!(
@@ -159,11 +163,26 @@ pub fn assets_set_up(
         let ui_dir = textures_dir.join("ui");
         textures[IMAGE_UI].insert(CROSSHAIR, asset_server.load(ui_dir.join(CROSSHAIR)));
     }
+    let models_dir = Path::new("models");
     //meshes
     {
         //builtin
         meshes[MESH_BUILT_IN].insert(CUBE, mesh_assets.add(Cube::new(1.).into()));
         meshes[MESH_BUILT_IN].insert(PLANE, mesh_assets.add(Plane { size: 1. }.into()));
+        //weapon
+        let _weapon_dir = models_dir.join("weapon");
+        meshes[MESH_WEAPON].insert(
+            GUN_TOWER_0_BASE,
+            asset_server.load("models/weapon/gun_tower0.glb#Mesh0/Primitive0"),
+        );
+        meshes[MESH_WEAPON].insert(
+            GUN_TOWER_0_TOWER,
+            asset_server.load("models/weapon/gun_tower0.glb#Mesh1/Primitive0"),
+        );
+        meshes[MESH_WEAPON].insert(
+            GUN_TOWER_0_GUN,
+            asset_server.load("models/weapon/gun_tower0.glb#Mesh2/Primitive0"),
+        );
     }
     //materials
     {

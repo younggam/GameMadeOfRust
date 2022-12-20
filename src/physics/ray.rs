@@ -113,40 +113,19 @@ impl Ray {
     }
 }
 
-pub struct RayHitInfo<'a> {
-    ray: &'a Ray,
-    entity: Entity,
-    aabb: AABB,
-    t: f32,
+pub struct RayHitInfo {
+    pub entity: Entity,
+    pub aabb: AABB,
+    ///Distance
+    pub t: f32,
 }
 
-impl<'a> RayHitInfo<'a> {
-    pub fn new(ray: &'a Ray, entity: Entity, aabb: AABB, t: f32) -> Self {
+impl RayHitInfo {
+    pub fn new(entity: Entity, aabb: AABB, t: f32) -> Self {
         Self {
-            ray,
             entity,
             aabb,
             t,
         }
-    }
-
-    pub fn _ray(&self) -> &Ray {
-        self.ray
-    }
-
-    pub fn entity(&self) -> Entity {
-        self.entity
-    }
-
-    pub fn aabb(&self) -> AABB {
-        self.aabb
-    }
-
-    pub fn _t(&self) -> f32 {
-        self.t
-    }
-
-    pub fn point(&self, correction: f32) -> Vec3 {
-        self.ray.point(self.t - correction)
     }
 }

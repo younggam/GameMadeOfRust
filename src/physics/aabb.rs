@@ -6,7 +6,7 @@ use std::{
 };
 
 use bevy::{
-    math::{BVec3, Quat, Vec3},
+    math::{BVec3, Vec3},
     prelude::Component,
 };
 
@@ -32,28 +32,27 @@ impl AABB {
     }
 
     ///Determine min and max from size and zero offset.
-    pub fn from_size(mut size: f32) -> Self {
+    pub fn _from_size(mut size: f32) -> Self {
         size = size.abs() * 0.5;
         Self::new(Vec3::splat(-size), Vec3::splat(size))
     }
 
     ///Determine min and max from size and offset.
-    pub fn _from_size_offset(mut size: f32, offset: Vec3) -> Self {
+    pub fn from_size_offset(mut size: f32, offset: Vec3) -> Self {
         size = size.abs() * 0.5;
         Self::new(offset - size, offset + size)
     }
 
     //Extract aabb from shape vertices and objects' pos and rot.
-    pub fn _from_points(points: &[Vec3], pos: Vec3, rot: Quat) -> Self {
+    pub fn from_points(points: &[Vec3]) -> Self {
         if points.len() < 3 {
             panic!("Number of points should be at least 3 to be polygon.");
         } else {
             let mut min = Vec3::splat(f32::INFINITY);
             let mut max = Vec3::splat(f32::NEG_INFINITY);
             for point in points {
-                let point = rot.mul_vec3(*point + pos);
-                min = min.min(point);
-                max = max.max(point);
+                min = min.min(*point);
+                max = max.max(*point);
             }
             Self::new(min, max)
         }
@@ -69,18 +68,6 @@ impl AABB {
 
     pub fn length(&self) -> Vec3 {
         self.max - self.min
-    }
-
-    pub fn _x_length(&self) -> f32 {
-        self.max.x - self.min.x
-    }
-
-    pub fn _y_length(&self) -> f32 {
-        self.max.y - self.min.y
-    }
-
-    pub fn _z_length(&self) -> f32 {
-        self.max.z - self.min.z
     }
 
     pub fn center(&self) -> Vec3 {
@@ -190,6 +177,22 @@ impl AABB {
                 Ordering::Greater
             },
         ]
+    }
+
+    ///Check which bound face point is lying on.
+    ///Returns unit vector of face.
+    pub fn face(&self, point: Vec3) -> Vec3 {
+        let check = (point - self.center()) / self.length();
+        let check_abs = check.abs();
+        let x = check_abs.x >= check_abs.y && check_abs.x >= check_abs.z;
+        let y = check_abs.y >= check_abs.x && check_abs.y >= check_abs.z;
+        let z = check_abs.z >= check_abs.x && check_abs.z >= check_abs.y;
+        Vec3::new(
+            if x { check.x.signum() } else { 0. },
+            if y { check.y.signum() } else { 0. },
+            if z { check.z.signum() } else { 0. },
+        )
+        .normalize()
     }
 
     ///Checks whether this and other bounding box intersected. Exclusive bound line.

@@ -1,33 +1,31 @@
-use crate::physics::{aabb::AABB, ray::Ray, ray::RayHitInfo};
-
-use std::{cmp::Ordering, collections::BTreeSet, ops::Deref};
-
-use bevy::{
-    math::{BVec3, Vec3},
-    prelude::{Component, Entity},
+use crate::physics::{
+    aabb::AABB,
+    collider::Collider,
+    collider::Shape,
+    ray::{Ray, RayHitInfo},
 };
 
-///Container for entity and bounding box for octree.
-#[derive(Copy, Clone)]
+use std::{borrow::Borrow, cmp::Ordering, collections::BTreeSet};
+
+use bevy::prelude::*;
+
+///Caching data for octree to prevent frequent recalculate.
+#[derive(Clone)]
 pub struct OctreeEntity {
     entity: Entity,
     aabb: AABB,
+    shape: Shape,
+    rotation: Quat,
 }
 
 impl OctreeEntity {
-    pub fn new(entity: Entity, bound: AABB) -> Self {
+    pub fn new(entity: Entity, collider: &Collider, transform: &Transform) -> Self {
         Self {
             entity,
-            aabb: bound,
+            aabb: collider.aabb(transform),
+            shape: collider.shape(),
+            rotation: transform.rotation,
         }
-    }
-}
-
-impl Deref for OctreeEntity {
-    type Target = AABB;
-
-    fn deref(&self) -> &Self::Target {
-        &self.aabb
     }
 }
 
@@ -48,6 +46,12 @@ impl PartialOrd for OctreeEntity {
 impl Ord for OctreeEntity {
     fn cmp(&self, other: &Self) -> Ordering {
         self.entity.cmp(&other.entity)
+    }
+}
+
+impl Borrow<Entity> for OctreeEntity {
+    fn borrow(&self) -> &Entity {
+        &self.entity
     }
 }
 
@@ -95,7 +99,7 @@ impl Octree {
         Self::new(
             capacity,
             min_leaf_extent,
-            AABB::_from_size_offset(size, offset),
+            AABB::from_size_offset(size, offset),
         )
     }
 
@@ -147,9 +151,8 @@ impl Octree {
     }
 
     ///Return is whether entity doesn't already exist.
-    pub fn insert(&mut self, entity: Entity, aabb: AABB) -> bool {
-        let entity = OctreeEntity::new(entity, aabb);
-        self.try_extend(&aabb);
+    pub fn insert(&mut self, entity: OctreeEntity) -> bool {
+        self.try_extend(&entity.aabb);
         let mut index = self.root;
         let mut parent_index = Self::NULL_INDEX;
         let mut octant_index = Self::NULL_INDEX;
@@ -218,7 +221,6 @@ impl Octree {
 
     ///Return is whether existed entity is removed.
     pub fn remove(&mut self, entity: Entity, aabb: AABB) -> bool {
-        let entity = OctreeEntity::new(entity, aabb);
         let mut index = self.root;
         let mut octant_index = Self::NULL_INDEX;
         let mut ret = false;
@@ -236,7 +238,7 @@ impl Octree {
                 break;
             } else {
                 //Whether entity is fit in node's arbitrary octant.
-                match (entity.aabb - node.aabb.center()).octant() {
+                match (aabb - node.aabb.center()).octant() {
                     Some(octant) => {
                         octant_index = OctreeNode::octant_to_index(octant);
                         index = node.children[octant_index];
@@ -298,11 +300,11 @@ impl Octree {
     }
 
     ///Return hit information about raycast.
-    pub fn raycast<'a>(&self, ray: &'a Ray) -> Option<RayHitInfo<'a>> {
+    pub fn raycast(&self, ray: &Ray) -> Option<RayHitInfo> {
         let mut len = f32::INFINITY;
         let mut pivot = 0f32;
         self.raycast_inner(self.root, ray, &mut len, &mut pivot)
-            .map(|(e, b)| RayHitInfo::new(ray, e, b, len))
+            .map(|(e, b)| RayHitInfo::new(e, b, len))
     }
 
     fn raycast_inner(

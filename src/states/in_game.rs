@@ -1,13 +1,17 @@
 use crate::{
     asset::*,
     consts::*,
-    physics::{aabb::AABB, octree::Octree, ray::Ray, Collides},
+    physics::{aabb::AABB, octree::Octree, ray::Ray},
     states::*,
     ui::*,
 };
 
+use bevy::input::mouse::MouseWheel;
 use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 
+use crate::physics::collider::{Collider, Shape};
+use crate::physics::octree::OctreeEntity;
+use crate::physics::ray::RayHitInfo;
 use bevy_polyline::prelude::*;
 
 const BLUEPRINT_BOUND: AABB =
@@ -148,21 +152,31 @@ fn setup(
     ));
     //selection
     let selection = Selection::new(
-        meshs[MESH_BUILT_IN][CUBE].clone(),
+        vec![
+            meshs[MESH_WEAPON][GUN_TOWER_0_BASE].clone(),
+            meshs[MESH_WEAPON][GUN_TOWER_0_TOWER].clone(),
+            meshs[MESH_WEAPON][GUN_TOWER_0_GUN].clone(),
+        ],
         standard_materials[S_MAT_BUILT_IN][WHITE].clone(),
         standard_materials[S_MAT_BUILT_IN][WHITE_TRANS].clone(),
-        AABB::from_size(1.),
+        Collider::from_shape(Shape::CutSphere {
+            radius: 2.5,
+            cut: 0.5,
+        }),
     );
-    commands.spawn((
-        PbrBundle {
-            mesh: selection.mesh.clone(),
-            material: selection.material_trans.clone(),
-            visibility: Visibility::INVISIBLE,
-            ..default()
-        },
-        selection,
-        state.mark(),
-    ));
+    let children = selection.create_transparent();
+    commands
+        .spawn((
+            TransformBundle::default(),
+            VisibilityBundle::default(),
+            selection,
+            state.mark(),
+        ))
+        .add_children(|parent| {
+            for bundle in children {
+                parent.spawn(bundle);
+            }
+        });
 }
 
 ///locks cursor to window while in game.
@@ -246,29 +260,53 @@ fn move_camera(
 }
 
 #[derive(Component)]
-pub struct LookAt(Option<(Option<(Entity, AABB)>, Vec3)>);
+pub struct LookAt(Option<RayHitInfo>);
 
 #[derive(Component)]
 pub struct Selection {
-    mesh: Handle<Mesh>,
+    valid: bool,
+    meshes: Vec<Handle<Mesh>>,
     material: Handle<StandardMaterial>,
     material_trans: Handle<StandardMaterial>,
-    aabb: AABB,
+    collider: Collider,
 }
 
 impl Selection {
     pub fn new(
-        mesh: Handle<Mesh>,
+        meshes: Vec<Handle<Mesh>>,
         material: Handle<StandardMaterial>,
         material_trans: Handle<StandardMaterial>,
-        aabb: AABB,
+        collider: Collider,
     ) -> Self {
         Self {
-            mesh,
+            valid: false,
+            meshes,
             material,
             material_trans,
-            aabb,
+            collider,
         }
+    }
+
+    pub fn create_transparent(&self) -> Vec<PbrBundle> {
+        self.meshes
+            .iter()
+            .map(|mesh| PbrBundle {
+                mesh: mesh.clone(),
+                material: self.material_trans.clone(),
+                ..default()
+            })
+            .collect()
+    }
+
+    pub fn create(&self) -> Vec<PbrBundle> {
+        self.meshes
+            .iter()
+            .map(|mesh| PbrBundle {
+                mesh: mesh.clone(),
+                material: self.material.clone(),
+                ..default()
+            })
+            .collect()
     }
 }
 
@@ -286,31 +324,51 @@ fn _select(
 fn camera_look_at(
     mut camera: Query<(&Transform, &mut LookAt), With<Camera>>,
     octree: Query<&Octree>,
-    mut selection: Query<(&mut Transform, &mut Visibility), (With<Selection>, Without<Camera>)>,
+    mut selection: Query<(&mut Selection, &mut Transform), Without<Camera>>,
+    mut mouse_wheel: EventReader<MouseWheel>,
+    mut rotate: Local<i32>,
 ) {
-    let (transform, mut look_at) = camera.single_mut();
-    let camera_pos = transform.translation;
-    let camera_forward = transform.forward();
-    let octree = octree.single();
-    let mut selection = selection.single_mut();
-    fn set_selection(pos: Vec3, mut selection: (Mut<Transform>, Mut<Visibility>)) -> Vec3 {
-        let pos = pos.round();
-        selection.0.translation = pos;
-        *selection.1 = Visibility::VISIBLE;
-        pos
+    let mut accum = 0.;
+    for delta in mouse_wheel.iter() {
+        accum += delta.y;
     }
+    if accum > 0. {
+        *rotate += 1
+    } else if accum < 0. {
+        *rotate -= 1
+    }
+    let y_rot = (*rotate % 4) as f32 * 90f32.to_radians();
+
+    let (camera_transform, mut look_at) = camera.single_mut();
+    let camera_pos = camera_transform.translation;
+    let camera_forward = camera_transform.forward();
+    let octree = octree.single();
+    let (mut selection, mut transform) = selection.single_mut();
     //Get raycast hit point.
     let ray = Ray::new(camera_pos, camera_forward);
     look_at.0 = match octree.raycast(&ray) {
-        Some(hit_info) => Some((
-            Some((hit_info.entity(), hit_info.aabb())),
-            set_selection(hit_info.point(0.001), selection),
-        )),
+        Some(hit_info) => {
+            let pos = ray.point(hit_info.t + 0.001);
+            let face = hit_info.aabb.face(pos);
+            transform.translation = pos.round() + face;
+            transform.rotation =
+                Quat::from_rotation_arc(Vec3::Y, face) * Quat::from_rotation_y(y_rot);
+            selection.valid = true;
+            Some(hit_info)
+        }
         //If no result, checks root of tree's bound.
         None => match BLUEPRINT_BOUND.intersects_ray(&ray) {
-            Some(len) => Some((None, set_selection(ray.point(len - 0.001), selection))),
+            Some(len) => {
+                let pos = ray.point(len + 0.001);
+                let face = -BLUEPRINT_BOUND.face(pos);
+                transform.translation = pos.round() + face;
+                transform.rotation =
+                    Quat::from_rotation_arc(Vec3::Y, face) * Quat::from_rotation_y(y_rot);
+                selection.valid = true;
+                None
+            }
             None => {
-                *selection.1 = Visibility::INVISIBLE;
+                selection.valid = false;
                 None
             }
         },
@@ -321,9 +379,8 @@ fn camera_look_at(
 fn place(
     mut commands: Commands,
     mut octree: Query<&mut Octree>,
-    camera: Query<&LookAt, With<Camera>>,
     state: Res<GlobalState>,
-    selection: Query<&Selection>,
+    selection: Query<(&Selection, &Transform)>,
     input: Res<Input<MouseButton>>,
     time: Res<Time>,
     mut press_time: Local<f32>,
@@ -343,24 +400,30 @@ fn place(
         }
     }
 
+    let (selection, &transform) = selection.single();
     if place {
-        if let Some((_, pos)) = camera.single().0 {
-            let selection = selection.single();
+        if selection.valid {
             //If there's a result, spawn a selection.
+            let children = selection.create();
             let entity = commands
                 .spawn((
-                    PbrBundle {
-                        mesh: selection.mesh.clone(),
-                        material: selection.material.clone(),
-                        transform: Transform::from_translation(pos),
+                    TransformBundle {
+                        local: transform,
                         ..default()
                     },
+                    VisibilityBundle::default(),
                     state.mark(),
-                    Collides,
-                    selection.aabb,
+                    selection.collider.clone(),
                 ))
+                .with_children(|parent| {
+                    for bundle in children {
+                        parent.spawn(bundle);
+                    }
+                })
                 .id();
-            octree.single_mut().insert(entity, selection.aabb + pos);
+            octree
+                .single_mut()
+                .insert(OctreeEntity::new(entity, &selection.collider, &transform));
         }
     }
 }
@@ -390,10 +453,10 @@ fn replace(
     }
 
     if replace {
-        if let Some((Some((e, b)), _)) = camera.single().0 {
+        if let Some(hit_info) = &camera.single().0 {
             //If there's a result, despawn a cube.
-            octree.single_mut().remove(e, b);
-            commands.entity(e).despawn_recursive();
+            octree.single_mut().remove(hit_info.entity, hit_info.aabb);
+            commands.entity(hit_info.entity).despawn_recursive();
         }
     }
 }
