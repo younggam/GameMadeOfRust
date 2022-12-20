@@ -207,12 +207,15 @@ impl Octree {
             self.base_aabb = self.base_aabb.extend(aabb);
         } else {
             self.base_aabb.extend_for(aabb, |aabb| {
+                println!("extend");
                 let index = self.get_or_create_node(aabb, Self::NULL_INDEX);
                 let octant = (self.nodes[self.root].aabb - self.nodes[index].aabb.center())
                     .octant()
                     .expect("Maybe float point precision problem");
                 self.nodes[self.root].parent = index;
-                self.nodes[index].children[OctreeNode::octant_to_index(octant)] = self.root;
+                let parent = &mut self.nodes[index];
+                parent.children_len += 1;
+                parent.children[OctreeNode::octant_to_index(octant)] = self.root;
                 self.base_aabb = aabb;
                 self.root = index;
             });

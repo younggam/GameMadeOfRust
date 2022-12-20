@@ -455,8 +455,9 @@ fn replace(
     if replace {
         if let Some(hit_info) = &camera.single().0 {
             //If there's a result, despawn a cube.
-            octree.single_mut().remove(hit_info.entity, hit_info.aabb);
-            commands.entity(hit_info.entity).despawn_recursive();
+            if octree.single_mut().remove(hit_info.entity, hit_info.aabb){
+                commands.entity(hit_info.entity).despawn_recursive();
+            }
         }
     }
 }
